@@ -39,13 +39,21 @@ unavailable the API returns an explicit `unavailable` status, never a fabricated
   zustand, react-three-fiber + drei, d3. Dark scientific theme. WCWS footer in root layout.
 - **Backend**: FastAPI (async), SQLAlchemy 2.0 async + asyncpg, Alembic, pydantic v2,
   Celery + Redis. REST + WebSocket.
-- **Worker**: Celery — runs the pipeline; simulation publishes frames to Redis pub/sub;
-  WS streamer relays to browser.
+- **Worker**: Celery — runs the experiment pipeline (score → persist → simulate). Redis is
+  the Celery broker.
 - **Infra**: docker-compose — postgres:16, redis:7, api, worker, web. Local dev-first.
 
-Data flow (experiment run): `POST /experiments` → `POST /experiments/{id}/run`
-(enqueue) → worker: docking → response → simulation(top compounds) → scoring → report;
-simulation publishes frames to `exp:{id}:frames`; `WS /experiments/{id}/stream` relays.
+Data flow (experiment run): `POST /experiments` → `POST /experiments/{id}/run` (enqueue on
+Celery, or `?sync=true` inline) → worker: gather sub-scores from adapters → scoring →
+persist effectiveness rows → simulate top compound → persist run.
+
+Live visualization (design refinement vs. the original Redis frame pub/sub): because a run
+is only ~120 fast timesteps, "watch it compute live over Redis" adds an open-WS-then-run
+race and buffering for zero user benefit. Instead `WS /experiments/{id}/stream` performs a
+**deterministic re-run from the stored seed**, paced to the client — race-free and
+replayable, which the timeline scrubber needs anyway. `WS /simulate/stream` does the same
+for the sandbox illustrative-transfer explorer. Every stream opens with the mandatory
+StreamMeta envelope (both notices) and every frame also carries the illustrative notice.
 
 ## 3. SCIENTIFIC HONESTY (load-bearing — read before writing sim code)
 

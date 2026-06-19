@@ -25,7 +25,7 @@ dependencies = [
 docking = ["vina>=1.2.5", "meeko>=0.5"]
 neoantigen = ["mhcflurry>=2.1", "tensorflow>=2.16"]
 response = ["xgboost>=2.0", "scikit-learn>=1.4", "pandas>=2.2"]
-test = ["pytest>=8.0", "pytest-asyncio>=0.23", "respx>=0.21"]
+test = ["pytest>=8.0", "pytest-asyncio>=0.23", "respx>=0.21", "aiosqlite>=0.20"]
 
 [build-system]
 requires = ["hatchling"]

@@ -105,6 +105,7 @@ class Experiment(Base):
     target_id: Mapped[int | None] = mapped_column(ForeignKey("targets.id"), default=None)
     compound_set: Mapped[list] = mapped_column(JSON, default=list)  # list[int] compound ids
     weights: Mapped[dict] = mapped_column(JSON, default=dict)
+    seed: Mapped[int] = mapped_column(Integer, default=0)  # deterministic simulation seed
     status: Mapped[ExperimentStatus] = mapped_column(
         Enum(ExperimentStatus), default=ExperimentStatus.created
     )

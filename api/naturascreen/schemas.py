@@ -57,3 +57,100 @@ class CompoundPage(BaseModel):
     total: int
     limit: int
     offset: int
+
+
+# --- Targets (used by the experiment builder; full curation in the docking phase) ---
+
+
+class TargetOut(ORMModel):
+    id: int
+    type: str
+    pdb_id: str | None = None
+    gene: str | None = None
+    description: str | None = None
+    dockable: bool
+    box_source: str | None = None
+
+
+# --- Experiments ---
+
+
+class ExperimentCreate(BaseModel):
+    target_id: int | None = None
+    compound_set: list[int] = Field(default_factory=list)
+    weights: dict[str, float] | None = None
+    seed: int = 0
+
+
+class ExperimentOut(ORMModel):
+    id: int
+    status: str
+    target_id: int | None
+    compound_set: list
+    weights: dict
+    error: str | None
+    created_at: datetime
+
+
+# --- Live simulation stream (spec §3) ---
+#
+# Two message types flow over the websocket. StreamMeta is sent first and carries BOTH
+# safety notices; the viewer is hard-gated on it (it refuses to render cells without an
+# active notice overlay). Every Frame ALSO carries the illustrative notice — the per-run
+# total is ~120 frames, so the overhead is trivial and any frame inspected in isolation
+# still carries the boundary.
+
+
+class StreamMeta(SafetyEnvelope):
+    type: str = "meta"
+    effectiveness: float
+    seed: int
+    steps: int
+    transfer: dict  # the HeuristicEffectTransfer parameters, surfaced as illustrative
+    source: str  # "experiment:{id}" or "sandbox"
+
+
+class FrameOut(Illustrated):
+    type: str = "frame"
+    t: int
+    time: float
+    positions: list[float]
+    states: list[int]
+    population: int
+    baseline_population: int
+    counts: dict[str, int] = Field(default_factory=dict)
+
+
+class StreamEnd(Illustrated):
+    type: str = "end"
+    final_population: int
+    baseline_population: int
+    reduction_pct: float
+
+
+# --- Experiment results / ranking ---
+
+
+class ScoredCompoundOut(BaseModel):
+    compound_id: int
+    name: str
+    coconut_id: str | None
+    smiles: str
+    rank: int
+    combined_score: float
+    normalized: dict[str, float | None]
+    breakdown: dict
+    warnings: list[str] = Field(default_factory=list)
+
+
+class SimulationSummary(BaseModel):
+    compound_id: int
+    baseline_population: int
+    final_population: int
+    reduction_pct: float
+
+
+class ExperimentResults(SafetyEnvelope):
+    experiment: ExperimentOut
+    ranked: list[ScoredCompoundOut]
+    simulation: SimulationSummary | None = None

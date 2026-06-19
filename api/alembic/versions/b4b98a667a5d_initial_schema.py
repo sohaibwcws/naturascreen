@@ -1,8 +1,8 @@
 """initial schema
 
-Revision ID: e313704c113e
+Revision ID: b4b98a667a5d
 Revises: 
-Create Date: 2026-06-19 04:45:43.725289
+Create Date: 2026-06-19 05:13:56.417949
 """
 from typing import Sequence, Union
 
@@ -10,7 +10,7 @@ from alembic import op
 import sqlalchemy as sa
 
 
-revision: str = 'e313704c113e'
+revision: str = 'b4b98a667a5d'
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
@@ -70,6 +70,7 @@ def upgrade() -> None:
     sa.Column('target_id', sa.Integer(), nullable=True),
     sa.Column('compound_set', sa.JSON(), nullable=False),
     sa.Column('weights', sa.JSON(), nullable=False),
+    sa.Column('seed', sa.Integer(), nullable=False),
     sa.Column('status', sa.Enum('created', 'queued', 'running', 'completed', 'failed', name='experimentstatus'), nullable=False),
     sa.Column('error', sa.Text(), nullable=True),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('(CURRENT_TIMESTAMP)'), nullable=False),
