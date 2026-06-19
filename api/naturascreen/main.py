@@ -42,15 +42,25 @@ def create_app() -> FastAPI:
 
     @app.get("/meta", tags=["meta"])
     async def meta() -> dict:
-        """Honest capability report: what is wired vs. what is `unavailable`."""
+        """Honest capability report: what is actually provisioned vs. `unavailable`."""
+        import shutil
+
+        from .services.response.model import is_ready as response_ready
+
         return {
             "version": __version__,
             "disclaimer": DISCLAIMER,
             "simulation_notice": SIMULATION_NOTICE,
             "adapters": {
-                "docking": {"available": bool(settings.vina_binary), "tool": "AutoDock Vina"},
+                # Reflect real provisioning, not mere configuration: the Vina binary must be
+                # on PATH, MHCflurry models fetched, the response checkpoint trained.
+                "docking": {
+                    "available": bool(settings.vina_binary)
+                    and shutil.which(settings.vina_binary) is not None,
+                    "tool": "AutoDock Vina",
+                },
                 "neoantigen": {"available": settings.mhcflurry_ready, "tool": "MHCflurry"},
-                "response": {"available": settings.response_model_ready, "tool": "XGBoost/GDSC"},
+                "response": {"available": response_ready(), "tool": "XGBoost/GDSC"},
             },
         }
 
