@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,6 +15,7 @@ from ..models import (
     SimulationRun,
 )
 from ..schemas import (
+    CandidateReport,
     ExperimentCreate,
     ExperimentOut,
     ExperimentResults,
@@ -22,6 +23,7 @@ from ..schemas import (
     SimulationSummary,
 )
 from ..services.pipeline import run_pipeline
+from ..services.report.report import build_report, render_pdf
 
 router = APIRouter(prefix="/experiments", tags=["experiments"])
 
@@ -153,6 +155,35 @@ async def experiment_results(
         experiment=ExperimentOut.model_validate(experiment),
         ranked=ranked,
         simulation=simulation,
+    )
+
+
+@router.get("/{experiment_id}/report", response_model=CandidateReport)
+async def experiment_report(
+    experiment_id: int, session: AsyncSession = Depends(get_session)
+) -> CandidateReport:
+    await _load(session, experiment_id)
+    report = await build_report(session, experiment_id)
+    if report is None:
+        raise HTTPException(status_code=409, detail="experiment has not produced a ranking yet")
+    return report
+
+
+@router.get("/{experiment_id}/report.pdf")
+async def experiment_report_pdf(
+    experiment_id: int, session: AsyncSession = Depends(get_session)
+) -> Response:
+    await _load(session, experiment_id)
+    report = await build_report(session, experiment_id)
+    if report is None:
+        raise HTTPException(status_code=409, detail="experiment has not produced a ranking yet")
+    pdf = render_pdf(report)
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="naturascreen-exp-{experiment_id}.pdf"'
+        },
     )
 
 

@@ -154,3 +154,20 @@ class ExperimentResults(SafetyEnvelope):
     experiment: ExperimentOut
     ranked: list[ScoredCompoundOut]
     simulation: SimulationSummary | None = None
+
+
+# --- Candidate hypothesis report (PRD §8 candidate report; carries both notices) ---
+
+
+class CandidateReport(SafetyEnvelope):
+    experiment_id: int
+    generated_at: datetime
+    rank: int
+    combined_score: float
+    compound: dict
+    target: dict | None = None
+    subscores: dict
+    simulation: SimulationSummary | None = None
+    predicted_mechanism: str
+    caveats: list[str] = Field(default_factory=list)
+    references: list = Field(default_factory=list)

@@ -4,6 +4,7 @@ import { useParams } from "next/navigation";
 import { useState } from "react";
 import { SimulationPlayer } from "@/components/tumor/simulation-player";
 import { RankingTable } from "@/components/experiments/ranking-table";
+import { CandidateReport } from "@/components/experiments/candidate-report";
 import { api } from "@/lib/api";
 import { useAsync } from "@/lib/hooks";
 import type { ExperimentResults } from "@/lib/types";
@@ -75,6 +76,13 @@ export default function ExperimentDetailPage() {
           </p>
         )}
       </section>
+
+      {completed && (
+        <section className="space-y-2">
+          <h2 className="label">Report</h2>
+          <CandidateReport experimentId={id} />
+        </section>
+      )}
     </div>
   );
 }

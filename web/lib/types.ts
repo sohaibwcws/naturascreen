@@ -123,3 +123,31 @@ export interface ExperimentResults {
     reduction_pct: number;
   } | null;
 }
+
+export interface CandidateReport {
+  disclaimer: string;
+  illustrative_notice: string;
+  experiment_id: number;
+  generated_at: string;
+  rank: number;
+  combined_score: number;
+  compound: {
+    id: number;
+    name: string;
+    coconut_id: string | null;
+    smiles: string;
+    source_organism: string | null;
+    descriptors: Record<string, number>;
+  };
+  target: { gene: string | null; pdb_id: string | null; type: string } | null;
+  simulation: {
+    compound_id: number;
+    baseline_population: number;
+    final_population: number;
+    reduction_pct: number;
+  } | null;
+  subscores: Record<string, unknown>;
+  predicted_mechanism: string;
+  caveats: string[];
+  references: unknown[];
+}
