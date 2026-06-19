@@ -1,0 +1,55 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+  body {
+    @apply bg-base-900 text-ink antialiased;
+    background-image:
+      radial-gradient(60rem 60rem at 85% -10%, rgba(63, 208, 201, 0.06), transparent),
+      radial-gradient(50rem 50rem at -10% 110%, rgba(70, 217, 138, 0.05), transparent);
+    background-attachment: fixed;
+  }
+  ::selection {
+    @apply bg-accent/30 text-ink;
+  }
+  /* Thin, unobtrusive scrollbars for data panels. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #2a323f transparent;
+  }
+}
+
+@layer components {
+  .panel {
+    @apply rounded-lg border border-base-700 bg-base-800 shadow-panel;
+  }
+  .panel-pad {
+    @apply p-4 sm:p-5;
+  }
+  .label {
+    @apply text-xs font-medium uppercase tracking-wider text-ink-faint;
+  }
+  .stat {
+    @apply font-mono tabular-nums;
+  }
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-md border border-base-700
+      bg-base-750 px-3.5 py-2 text-sm font-medium text-ink transition
+      hover:border-accent/50 hover:text-accent disabled:cursor-not-allowed disabled:opacity-40;
+  }
+  .btn-primary {
+    @apply border-accent/40 bg-accent/15 text-accent hover:bg-accent/25;
+  }
+  .input {
+    @apply w-full rounded-md border border-base-700 bg-base-850 px-3 py-2 text-sm
+      text-ink placeholder:text-ink-faint focus:border-accent/60 focus:outline-none;
+  }
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full border border-base-700
+      bg-base-850 px-2.5 py-0.5 text-xs text-ink-muted;
+  }
+}

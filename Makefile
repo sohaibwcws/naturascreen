@@ -33,7 +33,7 @@ test: ## Run the full backend test suite (in-container).
 	$(COMPOSE) run --rm api pytest -q
 
 test-core: ## Run dependency-light core tests locally via uv (sim/scoring/normalization/disclaimer).
-	cd api && uv run --no-project --python 3.12 --with numpy --with pydantic --with pytest pytest -q tests/core
+	cd api && uv run --no-project --python 3.12 --with numpy --with pydantic --with pydantic-settings --with httpx --with pytest pytest -q tests/core
 
 fmt: ## Format + lint the backend.
 	cd api && uv run ruff format . && uv run ruff check --fix .
