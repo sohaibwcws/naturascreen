@@ -94,7 +94,7 @@ export default function AboutPage() {
           It&apos;s open source. Bring up the whole stack locally with Docker:
         </p>
         <pre className="panel panel-pad overflow-x-auto font-mono text-xs leading-relaxed text-ink-muted">
-{`git clone <repo> && cd ssc-cancer
+{`git clone https://github.com/sohaibwcws/naturascreen && cd naturascreen
 cp .env.example .env
 make up                 # postgres, redis, api, worker, web
 make migrate

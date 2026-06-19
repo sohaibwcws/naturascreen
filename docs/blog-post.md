@@ -110,7 +110,7 @@ Thousands of researchers, students, and citizen scientists screening open compou
 It's open source. The whole stack runs locally with Docker:
 
 ```bash
-git clone <repo> && cd ssc-cancer
+git clone https://github.com/sohaibwcws/naturascreen && cd naturascreen
 cp .env.example .env
 make up
 make migrate

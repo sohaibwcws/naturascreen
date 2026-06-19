@@ -72,6 +72,7 @@ the Linux worker or Rosetta + the x86 binary.) When unprovisioned, every adapter
 ## Quickstart (local, Docker)
 
 ```bash
+git clone https://github.com/sohaibwcws/naturascreen && cd naturascreen
 cp .env.example .env
 make up                       # postgres, redis, api, worker, beat, web
 make migrate
