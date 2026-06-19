@@ -57,6 +57,7 @@ class ResponseMeta:
     cv_metric: dict
     source: str
     natural_product_metric: dict | None = None
+    tissue_vocab: list[str] = field(default_factory=list)
     extra: dict = field(default_factory=dict)
 
     def to_dict(self) -> dict:
@@ -70,6 +71,7 @@ class ResponseMeta:
             cv_metric=dict(data.get("cv_metric") or {}),
             source=str(data.get("source", "")),
             natural_product_metric=data.get("natural_product_metric"),
+            tissue_vocab=list(data.get("tissue_vocab") or []),
             extra=dict(data.get("extra") or {}),
         )
 

@@ -57,9 +57,19 @@ def create_app() -> FastAPI:
     @app.get("/meta", tags=["meta"])
     async def meta() -> dict:
         """Honest capability report: what is actually provisioned vs. `unavailable`."""
+        import json
         import shutil
 
-        from .services.response.model import is_ready as response_ready
+        from .services.response import model as response_model
+
+        # Read the response model's honest dual-CV card if present (pure JSON, no xgboost).
+        response_card: dict | None = None
+        meta_file = response_model.meta_path()
+        if meta_file.is_file():
+            try:
+                response_card = json.loads(meta_file.read_text()).get("cv_metric")
+            except Exception:  # noqa: BLE001
+                response_card = None
 
         return {
             "version": __version__,
@@ -74,7 +84,11 @@ def create_app() -> FastAPI:
                     "tool": "AutoDock Vina",
                 },
                 "neoantigen": {"available": settings.mhcflurry_ready, "tool": "MHCflurry"},
-                "response": {"available": response_ready(), "tool": "XGBoost/GDSC"},
+                "response": {
+                    "available": response_model.is_ready(),
+                    "tool": "XGBoost/GDSC",
+                    "cv": response_card,
+                },
             },
         }
 

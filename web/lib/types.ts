@@ -24,6 +24,10 @@ export interface CompoundPage {
 export interface AdapterStatus {
   available: boolean;
   tool: string;
+  cv?: {
+    random?: { r2: number; rmse: number };
+    leave_compounds_out?: { r2: number; rmse: number };
+  } | null;
 }
 
 export interface Meta {

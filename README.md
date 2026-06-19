@@ -57,6 +57,18 @@ the Linux worker or Rosetta + the x86 binary.) When unprovisioned, every adapter
   out-of-distribution for most natural products; each prediction carries a nearest-neighbour
   Tanimoto applicability flag, surfaced in the report.
 
+### Validated, not just wired (what has actually been executed)
+- **Docking**: a real AutoDock Vina dock of the 1iep receptor / imatinib benchmark returns
+  **−13.28 kcal/mol** (the published value) on `linux/amd64` — the worker platform.
+- **Neoantigen**: live MHCflurry ranks CMV/flu epitopes as strong binders (%rank 0.02–0.13)
+  and poly-alanine as a non-binder (~9.5), as expected.
+- **Response**: trained on real GDSC1 (307 drugs, 120k cell-line×drug rows). Honest dual CV —
+  **random-split R²≈0.76** (skill at the IC50 regression task) but **leave-compounds-out
+  R²≈0.05** (the truthful metric for ranking an *unseen* compound: structure-only
+  generalization to new natural products is genuinely hard). Both are exposed at `/meta`.
+- **Orchestration**: the full Postgres + in-container Alembic migration + COCONUT ingestion
+  + API path runs under Docker (validated via colima).
+
 ## Quickstart (local, Docker)
 
 ```bash

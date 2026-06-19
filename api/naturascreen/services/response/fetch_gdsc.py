@@ -1,13 +1,16 @@
-"""Build a real (SMILES, LN_IC50) training CSV from GDSC1 — reproducible, no fabrication.
+"""Build a real per-(cell-line, drug) training CSV from GDSC1 — reproducible, no fabrication.
 
 Pipeline:
-1. Download the GDSC1 fitted dose-response (LN_IC50 per cell-line x drug) and the screened-
-   compounds annotation (DRUG_ID, DRUG_NAME, SYNONYMS) from the Sanger COG bucket.
-2. Aggregate to one median LN_IC50 per drug (a drug-level potency label).
-3. Resolve each drug's canonical SMILES from PubChem by name (synonym fallback).
-4. Write {out} with columns SMILES, LN_IC50, DRUG_NAME — consumed directly by train.py.
+1. Download GDSC1 fitted dose-response (LN_IC50 per cell-line × drug) and the screened-
+   compounds annotation (DRUG_NAME, SYNONYMS) from the Sanger COG bucket.
+2. Resolve each drug's canonical SMILES from PubChem by name (synonym fallback); cache the
+   name→SMILES map so reruns are instant.
+3. Emit one row per (cell line, drug): SMILES, CELL_LINE, TISSUE, LN_IC50.
 
-GDSC LN_IC50 is the natural log of IC50 in µM, exactly the response model's target unit.
+Keeping the cell-line dimension (with its tissue) is what lets the response model learn the
+genomic/context variance the PRD intended ("descriptors + cell-line genomics"), instead of
+collapsing every drug to a single median. GDSC LN_IC50 is the natural log of IC50 in µM.
+
 Run:  python -m naturascreen.services.response.fetch_gdsc --out /data/gdsc1.csv
 """
 
@@ -58,7 +61,7 @@ def _pubchem_smiles(name: str) -> str | None:
     return None
 
 
-def _resolve(name: str, synonyms: str | float | None) -> str | None:
+def _resolve_one(name: str, synonyms: str | float | None) -> str | None:
     smiles = _pubchem_smiles(name)
     if smiles:
         return smiles
@@ -71,48 +74,70 @@ def _resolve(name: str, synonyms: str | float | None) -> str | None:
     return None
 
 
+def _smiles_map(names: dict[str, str | float | None], cache: Path) -> dict[str, str]:
+    """Resolve {drug_name: synonyms} -> {drug_name: SMILES}, cached to disk."""
+    cache_file = cache / "smiles_map.json"
+    if cache_file.exists():
+        log.info("cached SMILES map")
+        return json.loads(cache_file.read_text())
+    resolved: dict[str, str] = {}
+    for i, (name, syns) in enumerate(names.items(), 1):
+        smiles = _resolve_one(name, syns)
+        time.sleep(0.2)
+        if smiles:
+            resolved[name] = smiles
+        if i % 25 == 0:
+            log.info("resolved %d/%d drug names", len(resolved), i)
+    cache.mkdir(parents=True, exist_ok=True)
+    cache_file.write_text(json.dumps(resolved))
+    return resolved
+
+
 def main(argv: list[str] | None = None) -> int:
     import pandas as pd  # lazy: heavy, only needed for this CLI
 
-    parser = argparse.ArgumentParser(description="Build a GDSC1 (SMILES, LN_IC50) training CSV.")
-    parser.add_argument("--out", type=Path, default=Path("/data/gdsc1_fitted_dose_response.csv"))
+    parser = argparse.ArgumentParser(description="Build a GDSC1 per-(cell-line, drug) CSV.")
+    parser.add_argument("--out", type=Path, default=Path("/data/gdsc1.csv"))
     parser.add_argument("--cache", type=Path, default=Path("/data/gdsc_cache"))
-    parser.add_argument("--max-drugs", type=int, default=0, help="0 = all resolvable drugs")
+    parser.add_argument("--max-rows", type=int, default=120000, help="0 = all rows")
+    parser.add_argument("--seed", type=int, default=0)
     logging.basicConfig(level=logging.INFO)
     args = parser.parse_args(argv)
 
     screened = _download(SCREENED_URL, args.cache / "screened_compounds.csv")
     gdsc1 = _download(GDSC1_URL, args.cache / "gdsc1_fitted_dose_response.xlsx")
 
-    log.info("reading dose-response (this takes a moment)...")
-    dr = pd.read_excel(gdsc1, engine="openpyxl", usecols=["DRUG_ID", "DRUG_NAME", "LN_IC50"])
-    median = dr.groupby(["DRUG_ID", "DRUG_NAME"], as_index=False)["LN_IC50"].median()
-
     comp = pd.read_csv(screened)
     syn_col = next((c for c in comp.columns if c.upper() == "SYNONYMS"), None)
-    synonyms = (
-        {int(r["DRUG_ID"]): r[syn_col] for _, r in comp.iterrows()} if syn_col else {}
+    name_syn = {
+        str(r["DRUG_NAME"]): (r[syn_col] if syn_col else None) for _, r in comp.iterrows()
+    }
+
+    log.info("reading dose-response (this takes a moment)...")
+    dr = pd.read_excel(
+        gdsc1, engine="openpyxl", usecols=["DRUG_NAME", "CELL_LINE_NAME", "TCGA_DESC", "LN_IC50"]
     )
+    # Resolve SMILES for the drug names actually present in the dose-response table.
+    present = {str(n): name_syn.get(str(n)) for n in dr["DRUG_NAME"].dropna().unique()}
+    smiles_map = _smiles_map(present, args.cache)
+    log.info("resolved SMILES for %d/%d drugs", len(smiles_map), len(present))
 
-    drugs = list(median.itertuples(index=False))
-    if args.max_drugs:
-        drugs = drugs[: args.max_drugs]
+    dr = dr[dr["DRUG_NAME"].astype(str).isin(smiles_map)].copy()
+    if args.max_rows and len(dr) > args.max_rows:
+        dr = dr.sample(n=args.max_rows, random_state=args.seed)
 
-    log.info("resolving SMILES for %d drugs via PubChem...", len(drugs))
     args.out.parent.mkdir(parents=True, exist_ok=True)
     written = 0
     with args.out.open("w", newline="", encoding="utf-8") as fh:
         writer = csv.writer(fh)
-        writer.writerow(["SMILES", "LN_IC50", "DRUG_NAME"])
-        for row in drugs:
-            smiles = _resolve(row.DRUG_NAME, synonyms.get(int(row.DRUG_ID)))
-            time.sleep(0.2)  # be polite to PubChem
+        writer.writerow(["SMILES", "CELL_LINE", "TISSUE", "LN_IC50"])
+        for row in dr.itertuples(index=False):
+            smiles = smiles_map.get(str(row.DRUG_NAME))
+            tissue = str(row.TCGA_DESC) if isinstance(row.TCGA_DESC, str) and row.TCGA_DESC else "UNKNOWN"
             if smiles:
-                writer.writerow([smiles, float(row.LN_IC50), row.DRUG_NAME])
+                writer.writerow([smiles, row.CELL_LINE_NAME, tissue, float(row.LN_IC50)])
                 written += 1
-                if written % 25 == 0:
-                    log.info("resolved %d so far", written)
-    log.info("wrote %d (SMILES, LN_IC50) rows to %s", written, args.out)
+    log.info("wrote %d (cell-line, drug) rows to %s", written, args.out)
     return 0 if written else 1
 
 

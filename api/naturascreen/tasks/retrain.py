@@ -25,23 +25,25 @@ from ..services.response.train import (
     _IC50_UM_CANDIDATES,
     _LN_IC50_CANDIDATES,
     _SMILES_CANDIDATES,
+    _TISSUE_CANDIDATES,
 )
 from .celery_app import celery_app
 
 log = logging.getLogger(__name__)
 
 
-def _read_base_rows(base_csv: Path) -> list[tuple[str, float]]:
-    """Read (SMILES, ln(IC50 µM)) rows from a real GDSC1 export, tolerant of column names."""
+def _read_base_rows(base_csv: Path) -> list[tuple[str, str, float]]:
+    """Read (SMILES, TISSUE, ln(IC50 µM)) rows from the GDSC export, tolerant of column names."""
     with base_csv.open(newline="", encoding="utf-8") as fh:
         reader = csv.DictReader(fh)
         cols = reader.fieldnames or []
         scol = next((c for c in _SMILES_CANDIDATES if c in cols), None)
         lcol = next((c for c in _LN_IC50_CANDIDATES if c in cols), None)
         icol = next((c for c in _IC50_UM_CANDIDATES if c in cols), None)
+        tcol = next((c for c in _TISSUE_CANDIDATES if c in cols), None)
         if not scol or not (lcol or icol):
             raise ValueError("base CSV lacks recognizable SMILES + (LN_)IC50 columns")
-        rows: list[tuple[str, float]] = []
+        rows: list[tuple[str, str, float]] = []
         for r in reader:
             smiles = (r.get(scol) or "").strip()
             if not smiles:
@@ -55,12 +57,13 @@ def _read_base_rows(base_csv: Path) -> list[tuple[str, float]]:
                 ln = math.log(ic50)
             else:
                 continue
-            rows.append((smiles, ln))
+            tissue = (r.get(tcol) or "UNKNOWN").strip() if tcol else "UNKNOWN"
+            rows.append((smiles, tissue, ln))
     return rows
 
 
-async def _gather_lab_rows() -> list[tuple[str, float]]:
-    """Verified lab results as (SMILES, ln(measured IC50 µM)) rows."""
+async def _gather_lab_rows() -> list[tuple[str, str, float]]:
+    """Verified lab results as (SMILES, TISSUE='UNKNOWN', ln(measured IC50 µM)) rows."""
     sessionmaker = get_sessionmaker()
     async with sessionmaker() as session:
         result = await session.execute(
@@ -68,20 +71,22 @@ async def _gather_lab_rows() -> list[tuple[str, float]]:
             .join(Compound, LabResult.compound_id == Compound.id)
             .where(LabResult.verified.is_(True))
         )
-        rows: list[tuple[str, float]] = []
+        rows: list[tuple[str, str, float]] = []
         for smiles, ic50 in result.all():
             if smiles and ic50 and ic50 > 0:
-                rows.append((smiles, math.log(float(ic50))))
+                rows.append((smiles, "UNKNOWN", math.log(float(ic50))))
         return rows
 
 
-def _write_augmented(out_csv: Path, base: list[tuple[str, float]], lab: list[tuple[str, float]]) -> None:
+def _write_augmented(
+    out_csv: Path, base: list[tuple[str, str, float]], lab: list[tuple[str, str, float]]
+) -> None:
     out_csv.parent.mkdir(parents=True, exist_ok=True)
     with out_csv.open("w", newline="", encoding="utf-8") as fh:
         writer = csv.writer(fh)
-        writer.writerow(["SMILES", "LN_IC50"])
-        for smiles, ln in [*base, *lab]:
-            writer.writerow([smiles, ln])
+        writer.writerow(["SMILES", "TISSUE", "LN_IC50"])
+        for smiles, tissue, ln in [*base, *lab]:
+            writer.writerow([smiles, tissue, ln])
 
 
 async def _retrain() -> dict:

@@ -1,314 +1,204 @@
-"""Train the response model on REAL public GDSC1 data — NEVER on fabricated rows.
+"""Train the response model on REAL GDSC1 data — NEVER on fabricated rows.
 
-Canonical data source (download manually; the file is never committed):
+Input is the per-(cell-line, drug) CSV from ``fetch_gdsc`` with columns SMILES, TISSUE,
+LN_IC50 (CELL_LINE optional/ignored). Features are the compound block (RDKit descriptors +
+folded ECFP4) plus a tissue one-hot, so the model learns cell-line/tissue context rather
+than collapsing a drug to one number.
 
-    Genomics of Drug Sensitivity in Cancer — GDSC1, *fitted dose-response* export
-    https://www.cancerrxgene.org/downloads/bulk_download
+Two cross-validation schemes are reported honestly:
+- ``random``  — 5-fold over (compound, cell-line) rows: the model's skill at the IC50
+  regression task. High here largely reflects learnable cell-line/tissue variance.
+- ``leave_compounds_out`` — GroupKFold grouped by compound: the HONEST screening metric,
+  i.e. how well it generalizes to a compound it has never seen (the actual use case for
+  natural-product screening). This is the number that matters for ranking new compounds.
 
-The GDSC1 fitted file reports ``LN_IC50`` (the natural log of the IC50 in µM) for each
-(cell line, drug) pair, alongside ``DRUG_NAME``. It does NOT ship structures, so the export
-must be augmented with a SMILES column (drug-name → SMILES resolved upstream from e.g.
-PubChem/ChEMBL). This trainer refuses to run without SMILES and a target column rather than
-inventing either — fabricating training data is the one thing the whole project forbids.
-
-What this script does, honestly:
-- Aggregates the (cell line, drug) rows to ONE ln(IC50) per unique compound (median across
-  cell lines), because the model's features are compound-only descriptors and the adapter
-  persists a single ``cell_line='aggregate'`` prediction. Aggregating per compound also makes
-  the k-fold CV a genuine compound-level generalization estimate (no leakage of the same
-  drug across folds).
-- Computes RDKit descriptors via ``compounds.descriptors.compute`` and projects them through
-  the shared ``features.feature_vector`` order.
-- Fits an XGBoost regressor and runs k-fold CV, PRINTING the honest R²/RMSE (including poor
-  values). GDSC is a screen of *synthetic* drugs, so the model is out-of-distribution for
-  most natural products; when a natural-product label column is supplied, its subset metric
-  is reported separately as a reminder of that bias.
-- Saves the model (``response_model.ubj``) plus a meta sidecar (``response_meta.json``)
-  carrying the training ECFP4 on-bits (for the applicability domain), the CV metric, the
-  feature order, and provenance.
-
-Usage (invoked by ``make data-response``):
-    python -m naturascreen.services.response.train [--csv PATH] [--smiles-col COL]
-        [--target-col COL] [--target-kind ln_ic50|ic50_um] [--np-col COL]
-        [--folds K] [--seed N] [--artifacts DIR]
+Canonical source: GDSC1 fitted dose response — https://www.cancerrxgene.org/downloads/bulk_download
+Run:  python -m naturascreen.services.response.train --csv /data/gdsc1.csv
 """
 
 from __future__ import annotations
 
 import argparse
+import csv
+import logging
 import sys
 from pathlib import Path
 
 from ...config import get_settings
-from ..compounds.descriptors import FEATURE_KEYS, compute
-from . import model
+from ..compounds.descriptors import FEATURE_KEYS
+from . import model as model_store
 from .features import feature_vector
 
-GDSC1_SOURCE = "https://www.cancerrxgene.org/downloads/bulk_download"
-DEFAULT_CSV_NAME = "gdsc1_fitted_dose_response.csv"
+log = logging.getLogger(__name__)
 
-# Column-name candidates we auto-detect when not explicitly told. Real GDSC1 exports use
-# LN_IC50 / DRUG_NAME; SMILES must be joined in upstream, so we accept the common spellings.
-_SMILES_CANDIDATES = ("SMILES", "smiles", "Smiles", "canonical_smiles", "CanonicalSMILES")
+GDSC1_SOURCE = "GDSC1 fitted dose response — https://www.cancerrxgene.org/downloads/bulk_download"
+DEFAULT_CSV_NAME = "gdsc1.csv"
+
+_SMILES_CANDIDATES = ("SMILES", "smiles", "canonical_smiles", "CanonicalSMILES")
 _LN_IC50_CANDIDATES = ("LN_IC50", "ln_ic50", "LnIC50")
-_IC50_UM_CANDIDATES = ("IC50_uM", "IC50_um", "IC50", "ic50_um", "ic50")
+_IC50_UM_CANDIDATES = ("IC50_uM", "IC50", "ic50")
+_TISSUE_CANDIDATES = ("TISSUE", "tissue", "TCGA_DESC")
 
 
 class TrainingDataError(SystemExit):
     """Raised (as a clean non-zero exit) when real data is missing or unusable."""
 
-    def __init__(self, message: str) -> None:
+    def __init__(self, message: str):
         super().__init__(f"error: {message}")
 
 
-def _pick_column(columns, explicit, candidates, what: str) -> str:
-    if explicit:
-        if explicit not in columns:
-            raise TrainingDataError(f"--{what} column {explicit!r} not found in CSV")
-        return explicit
-    for cand in candidates:
-        if cand in columns:
-            return cand
-    raise TrainingDataError(
-        f"could not find a {what} column (looked for {', '.join(candidates)}); "
-        f"pass it explicitly"
-    )
+def _pick(columns, candidates, what, required=True):
+    for c in candidates:
+        if c in columns:
+            return c
+    if required:
+        raise TrainingDataError(f"CSV has no {what} column (looked for {candidates}); got {columns}")
+    return None
 
 
-def _build_parser() -> argparse.ArgumentParser:
-    settings = get_settings()
-    default_csv = str(Path(settings.data_dir) / DEFAULT_CSV_NAME)
-    p = argparse.ArgumentParser(
-        prog="python -m naturascreen.services.response.train",
-        description=f"Train the response model on real GDSC1 data ({GDSC1_SOURCE}).",
-    )
-    p.add_argument("--csv", default=default_csv, help=f"GDSC1 fitted export (default {default_csv})")
-    p.add_argument("--smiles-col", default=None, help="SMILES column name (auto-detected if omitted)")
-    p.add_argument("--target-col", default=None, help="target column name (auto-detected if omitted)")
-    p.add_argument(
-        "--target-kind",
-        choices=("ln_ic50", "ic50_um"),
-        default=None,
-        help="how to read the target: ln_ic50 (GDSC LN_IC50, used as-is) or ic50_um (µM, log-transformed)",
-    )
-    p.add_argument("--np-col", default=None, help="boolean/flag column marking natural-product rows")
-    p.add_argument("--folds", type=int, default=5, help="k-fold CV splits (default 5)")
-    p.add_argument("--seed", type=int, default=0, help="random seed (default 0)")
-    p.add_argument("--artifacts", default=None, help="override artifacts output dir (testing)")
-    return p
-
-
-def _load_rows(args) -> tuple[list[str], list[float], list[bool]]:
-    """Read and validate the CSV -> aligned (smiles, ln_ic50, is_np) row lists. Real data only."""
+def _load_rows(path: Path) -> tuple[list[str], list[str], list[float]]:
+    """Read (smiles, tissue, ln_ic50) lists from a real CSV. Tissue defaults to UNKNOWN."""
     import math
 
-    # Guard for real data BEFORE importing pandas, so the "no data" refusal is clean even in a
-    # minimal environment. Fabricating training data is the one thing the project forbids.
-    csv_path = Path(args.csv)
-    if not csv_path.exists():
-        raise TrainingDataError(
-            f"GDSC1 CSV not found at {csv_path}. Download the GDSC1 fitted dose-response "
-            f"export from {GDSC1_SOURCE}, join a SMILES column, and pass it via --csv. "
-            f"This trainer will not fabricate data."
-        )
-
-    import pandas as pd
-
-    frame = pd.read_csv(csv_path)
-    if frame.empty:
-        raise TrainingDataError(f"CSV {csv_path} has no rows")
-
-    columns = list(frame.columns)
-    smiles_col = _pick_column(columns, args.smiles_col, _SMILES_CANDIDATES, "smiles-col")
-
-    # Resolve target column + kind. Prefer the native GDSC LN_IC50 (already ln(IC50 µM)).
-    kind = args.target_kind
-    if args.target_col:
-        target_col = _pick_column(columns, args.target_col, (), "target-col")
-        if kind is None:
-            kind = "ln_ic50" if target_col in _LN_IC50_CANDIDATES else "ic50_um"
-    elif kind == "ic50_um":
-        target_col = _pick_column(columns, None, _IC50_UM_CANDIDATES, "target-col")
-    elif kind == "ln_ic50":
-        target_col = _pick_column(columns, None, _LN_IC50_CANDIDATES, "target-col")
-    else:  # auto: LN_IC50 wins, else fall back to an IC50 (µM) column
-        ln_match = next((c for c in _LN_IC50_CANDIDATES if c in columns), None)
-        if ln_match:
-            target_col, kind = ln_match, "ln_ic50"
-        else:
-            target_col = _pick_column(columns, None, _IC50_UM_CANDIDATES, "target-col")
-            kind = "ic50_um"
-
-    smiles_out: list[str] = []
-    target_out: list[float] = []
-    np_out: list[bool] = []
-    for _, row in frame.iterrows():
-        smiles = row.get(smiles_col)
-        raw = row.get(target_col)
-        if not isinstance(smiles, str) or not smiles.strip():
-            continue
-        try:
-            value = float(raw)
-        except (TypeError, ValueError):
-            continue
-        if math.isnan(value) or math.isinf(value):
-            continue
-        ln_ic50 = value if kind == "ln_ic50" else math.log(value)
-        if not math.isfinite(ln_ic50):
-            continue
-        smiles_out.append(smiles.strip())
-        target_out.append(ln_ic50)
-        np_out.append(bool(row.get(args.np_col)) if args.np_col else False)
-
+    with path.open(newline="", encoding="utf-8") as fh:
+        reader = csv.DictReader(fh)
+        cols = reader.fieldnames or []
+        scol = _pick(cols, _SMILES_CANDIDATES, "SMILES")
+        lcol = _pick(cols, _LN_IC50_CANDIDATES, "LN_IC50", required=False)
+        icol = None if lcol else _pick(cols, _IC50_UM_CANDIDATES, "IC50")
+        tcol = _pick(cols, _TISSUE_CANDIDATES, "TISSUE", required=False)
+        smiles_out: list[str] = []
+        tissue_out: list[str] = []
+        y_out: list[float] = []
+        for row in reader:
+            smiles = (row.get(scol) or "").strip()
+            if not smiles:
+                continue
+            if lcol and row.get(lcol):
+                ln = float(row[lcol])
+            elif icol and row.get(icol):
+                ic50 = float(row[icol])
+                if ic50 <= 0:
+                    continue
+                ln = math.log(ic50)
+            else:
+                continue
+            smiles_out.append(smiles)
+            tissue_out.append((row.get(tcol) or "UNKNOWN").strip() if tcol else "UNKNOWN")
+            y_out.append(ln)
     if not smiles_out:
-        raise TrainingDataError(
-            f"no usable (SMILES, {target_col}) rows in {csv_path} after validation"
-        )
-    return smiles_out, target_out, np_out
-
-
-def _aggregate_by_compound(
-    smiles: list[str], targets: list[float], is_np: list[bool]
-) -> tuple[list[str], list[float], list[bool]]:
-    """Median ln(IC50) per unique SMILES; NP flag = any row for that compound was flagged."""
-    import statistics
-
-    buckets: dict[str, dict] = {}
-    for s, t, n in zip(smiles, targets, is_np):
-        b = buckets.setdefault(s, {"targets": [], "np": False})
-        b["targets"].append(t)
-        b["np"] = b["np"] or n
-    uniq_smiles = list(buckets)
-    uniq_targets = [statistics.median(buckets[s]["targets"]) for s in uniq_smiles]
-    uniq_np = [buckets[s]["np"] for s in uniq_smiles]
-    return uniq_smiles, uniq_targets, uniq_np
-
-
-def _featurize(
-    smiles: list[str], targets: list[float], is_np: list[bool]
-) -> tuple[list[list[float]], list[float], list[list[int]], list[bool], int]:
-    """Compute descriptors per compound; drop ones RDKit rejects. Returns X, y, onbits, np, n_dropped."""
-    X: list[list[float]] = []
-    y: list[float] = []
-    onbits: list[list[int]] = []
-    np_flags: list[bool] = []
-    dropped = 0
-    for s, t, n in zip(smiles, targets, is_np):
-        result = compute(s)
-        if result is None:
-            dropped += 1
-            continue
-        _, descriptors = result
-        X.append(feature_vector(descriptors))
-        y.append(t)
-        onbits.append(list(descriptors.get("ecfp4_onbits") or []))
-        np_flags.append(n)
-    return X, y, onbits, np_flags, dropped
+        raise TrainingDataError(f"no usable rows in {path}")
+    return smiles_out, tissue_out, y_out
 
 
 def _xgb_regressor(seed: int):
     import xgboost as xgb
 
-    # Modest, untuned defaults — honest about being a baseline, not a leaderboard model.
     return xgb.XGBRegressor(
         n_estimators=400,
-        max_depth=4,
+        max_depth=6,
         learning_rate=0.05,
         subsample=0.8,
-        colsample_bytree=0.8,
-        reg_lambda=1.0,
+        colsample_bytree=0.7,
         random_state=seed,
         n_jobs=0,
-        objective="reg:squarederror",
     )
 
 
-def _cross_validate(X, y, folds: int, seed: int) -> tuple[list[float], dict]:
-    """Pooled out-of-fold CV. Returns (oof_predictions, {r2, rmse, folds, n})."""
+def _cv(X, y, groups, folds: int, seed: int) -> dict:
     import numpy as np
     from sklearn.metrics import mean_squared_error, r2_score
-    from sklearn.model_selection import KFold
+    from sklearn.model_selection import GroupKFold, KFold
 
-    Xa = np.asarray(X, dtype=float)
-    ya = np.asarray(y, dtype=float)
-    n = len(ya)
-    k = max(2, min(folds, n))
-    oof = np.zeros(n, dtype=float)
-    kf = KFold(n_splits=k, shuffle=True, random_state=seed)
-    for train_idx, test_idx in kf.split(Xa):
-        reg = _xgb_regressor(seed)
-        reg.fit(Xa[train_idx], ya[train_idx])
-        oof[test_idx] = reg.predict(Xa[test_idx])
-    rmse = float(np.sqrt(mean_squared_error(ya, oof)))
-    r2 = float(r2_score(ya, oof))
-    return oof.tolist(), {"r2": round(r2, 4), "rmse": round(rmse, 4), "folds": k, "n": n}
+    X = np.asarray(X)
+    y = np.asarray(y)
+    groups = np.asarray(groups)
+
+    def _score(splitter, split_args) -> dict:
+        oof = np.full(len(y), np.nan)
+        for train_idx, test_idx in splitter.split(*split_args):
+            reg = _xgb_regressor(seed)
+            reg.fit(X[train_idx], y[train_idx])
+            oof[test_idx] = reg.predict(X[test_idx])
+        mask = ~np.isnan(oof)
+        return {
+            "r2": round(float(r2_score(y[mask], oof[mask])), 4),
+            "rmse": round(float(mean_squared_error(y[mask], oof[mask]) ** 0.5), 4),
+            "n": int(mask.sum()),
+        }
+
+    k = min(folds, max(2, len(set(groups.tolist()))))
+    return {
+        "random": {**_score(KFold(n_splits=folds, shuffle=True, random_state=seed), (X, y)), "scheme": "5-fold over (compound,cell-line) rows"},
+        "leave_compounds_out": {**_score(GroupKFold(n_splits=k), (X, y, groups)), "scheme": "GroupKFold grouped by compound — generalization to unseen compounds"},
+    }
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = _build_parser().parse_args(argv)
+    settings = get_settings()
+    parser = argparse.ArgumentParser(description="Train the response model on real GDSC1 data.")
+    parser.add_argument("--csv", type=Path, default=Path(settings.data_dir) / DEFAULT_CSV_NAME)
+    parser.add_argument("--folds", type=int, default=5)
+    parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--artifacts", type=Path, default=None)
+    logging.basicConfig(level=logging.INFO)
+    args = parser.parse_args(argv)
 
-    smiles, targets, is_np = _load_rows(args)
-    smiles, targets, is_np = _aggregate_by_compound(smiles, targets, is_np)
-    X, y, onbits, np_flags, dropped = _featurize(smiles, targets, is_np)
-
-    if len(y) < 2:
+    # Refuse to run on absent data BEFORE importing the heavy stack — never fabricate.
+    if not args.csv.is_file():
         raise TrainingDataError(
-            f"only {len(y)} usable compound(s) after descriptor computation "
-            f"({dropped} rejected by RDKit); need at least 2 to train"
+            f"GDSC1 CSV not found at {args.csv}. Run `python -m naturascreen.services.response."
+            f"fetch_gdsc --out {args.csv}` first. Will not fabricate data."
         )
 
-    print(f"Loaded {len(y)} unique compounds ({dropped} rejected by RDKit) from {args.csv}")
-    print(f"Source: GDSC1 fitted dose response — {GDSC1_SOURCE}")
+    smiles, tissues, y = _load_rows(args.csv)
 
-    oof, cv_metric = _cross_validate(X, y, args.folds, args.seed)
-    print(
-        f"Cross-validated (k={cv_metric['folds']}, n={cv_metric['n']}) "
-        f"R²={cv_metric['r2']}  RMSE={cv_metric['rmse']} (ln IC50 µM units)"
-    )
+    from ..compounds.descriptors import compute
 
-    import numpy as np
+    # Descriptors per unique compound (cached); drop ones RDKit rejects.
+    desc_cache: dict[str, dict | None] = {}
+    for s in set(smiles):
+        result = compute(s)
+        desc_cache[s] = result[1] if result else None
 
-    np_metric = None
-    np_count = sum(np_flags)
-    if np_count:
-        from sklearn.metrics import mean_squared_error, r2_score
+    tissue_vocab = sorted(set(tissues))
+    X, Y, groups = [], [], []
+    onbits_by_smiles: dict[str, list[int]] = {}
+    for s, t, target in zip(smiles, tissues, y):
+        desc = desc_cache.get(s)
+        if desc is None:
+            continue
+        X.append(feature_vector(desc, t, tissue_vocab))
+        Y.append(target)
+        groups.append(s)
+        onbits_by_smiles.setdefault(s, list(desc.get("ecfp4_onbits") or []))
 
-        mask = np.asarray(np_flags, dtype=bool)
-        ya = np.asarray(y, dtype=float)
-        pa = np.asarray(oof, dtype=float)
-        if mask.sum() >= 2:
-            np_r2 = float(r2_score(ya[mask], pa[mask]))
-            np_rmse = float(np.sqrt(mean_squared_error(ya[mask], pa[mask])))
-            np_metric = {"r2": round(np_r2, 4), "rmse": round(np_rmse, 4), "n": int(mask.sum())}
-            print(
-                f"Natural-product subset (n={np_metric['n']}): R²={np_metric['r2']}  "
-                f"RMSE={np_metric['rmse']}. GDSC is synthetic-drug-biased; treat this as the "
-                f"honest estimate for the population NaturaScreen actually screens."
-            )
-        else:
-            print(
-                f"Natural-product subset too small (n={int(np_count)}) for a separate metric; "
-                f"GDSC remains synthetic-drug-biased."
-            )
+    n_compounds = len(onbits_by_smiles)
+    log.info("training rows=%d, unique compounds=%d, tissues=%d", len(X), n_compounds, len(tissue_vocab))
+    if n_compounds < args.folds:
+        raise TrainingDataError(f"only {n_compounds} usable compounds; need >= {args.folds}")
 
-    # Fit the final model on ALL compounds and persist with the AD/metric meta sidecar.
-    final = _xgb_regressor(args.seed)
-    final.fit(np.asarray(X, dtype=float), np.asarray(y, dtype=float))
-    meta = model.ResponseMeta(
+    metrics = _cv(X, Y, groups, args.folds, args.seed)
+    reg = _xgb_regressor(args.seed)
+    reg.fit(X, Y)  # final model on all rows
+
+    meta = model_store.ResponseMeta(
         feature_keys=list(FEATURE_KEYS),
-        training_onbits=onbits,
-        cv_metric=cv_metric,
+        training_onbits=list(onbits_by_smiles.values()),
+        cv_metric=metrics,
         source=GDSC1_SOURCE,
-        natural_product_metric=np_metric,
-        extra={"dropped_by_rdkit": dropped, "target_unit": "ln(IC50 µM)"},
+        tissue_vocab=tissue_vocab,
+        extra={"rows": len(X), "compounds": n_compounds},
     )
-    artifacts = Path(args.artifacts) if args.artifacts else None
-    model.save(final, meta, artifacts)
-    print(
-        f"Saved model -> {model.model_path(artifacts)}\n"
-        f"Saved meta  -> {model.meta_path(artifacts)}\n"
-        f"Set RESPONSE_MODEL_READY=true to activate the adapter."
-    )
+    model_store.save(reg, meta, args.artifacts)
+
+    rnd, lco = metrics["random"], metrics["leave_compounds_out"]
+    print(f"Source: {GDSC1_SOURCE}")
+    print(f"Rows={len(X)}  unique compounds={n_compounds}  tissues={len(tissue_vocab)}")
+    print(f"CV random              R²={rnd['r2']:+.4f}  RMSE={rnd['rmse']:.4f}  (IC50 regression skill)")
+    print(f"CV leave-compounds-out R²={lco['r2']:+.4f}  RMSE={lco['rmse']:.4f}  (HONEST: ranking unseen compounds)")
+    print(f"Saved -> {model_store.model_path(args.artifacts)}")
+    print("Set RESPONSE_MODEL_READY=1 to activate the adapter.")
     return 0
 
 

@@ -18,6 +18,7 @@ dependency, which is why the pipeline can import it unconditionally.
 from __future__ import annotations
 
 import math
+import statistics
 
 from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -40,8 +41,15 @@ async def score(
     regressor, meta = model.load()
 
     descriptors = compound.molecular_descriptors or {}
-    x = features.feature_vector(descriptors)
-    ln_ic50 = float(regressor.predict([x])[0])
+    # Predict across the tissue panel the model was trained on, then aggregate. The compound
+    # is fixed; only the tissue context varies, so the median is the compound's typical
+    # predicted potency across cancer tissue types.
+    if meta.tissue_vocab:
+        batch = [features.feature_vector(descriptors, t, meta.tissue_vocab) for t in meta.tissue_vocab]
+    else:
+        batch = [features.compound_features(descriptors)]
+    preds = [float(p) for p in regressor.predict(batch)]
+    ln_ic50 = float(statistics.median(preds))
 
     onbits = list(descriptors.get("ecfp4_onbits") or [])
     nn = applicability.nearest_neighbor_tanimoto(onbits, meta.training_onbits)
@@ -58,7 +66,7 @@ async def score(
         ResponsePrediction(
             experiment_id=experiment.id,
             compound_id=compound.id,
-            cell_line="aggregate",
+            cell_line="panel-median",
             # Raw ln(IC50) is returned unmodified; the persisted µM value is guarded against
             # an overflow from a pathological prediction (exp argument capped at ~700).
             predicted_ic50=math.exp(min(ln_ic50, 700.0)),

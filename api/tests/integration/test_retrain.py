@@ -18,13 +18,13 @@ def test_read_base_and_write_augmented(tmp_path):
     base = tmp_path / "gdsc.csv"
     base.write_text("DRUG_NAME,SMILES,LN_IC50\nAspirin,CC(=O)Oc1ccccc1C(=O)O,2.3\nbad,,9\n")
     rows = retrain._read_base_rows(base)
-    assert rows == [("CC(=O)Oc1ccccc1C(=O)O", 2.3)]  # empty-SMILES row dropped
+    assert rows == [("CC(=O)Oc1ccccc1C(=O)O", "UNKNOWN", 2.3)]  # empty-SMILES row dropped; no tissue col -> UNKNOWN
 
     out = tmp_path / "aug.csv"
-    retrain._write_augmented(out, rows, [("CCO", -1.0)])
+    retrain._write_augmented(out, rows, [("CCO", "UNKNOWN", -1.0)])
     text = out.read_text().splitlines()
-    assert text[0] == "SMILES,LN_IC50"
-    assert "CCO,-1.0" in text
+    assert text[0] == "SMILES,TISSUE,LN_IC50"
+    assert "CCO,UNKNOWN,-1.0" in text
     assert len(text) == 3  # header + base + lab
 
 
@@ -54,6 +54,7 @@ async def test_gather_lab_rows_only_verified(monkeypatch):
     await engine.dispose()
 
     assert len(rows) == 1  # only the verified result
-    smiles, ln = rows[0]
+    smiles, tissue, ln = rows[0]
     assert smiles == "CCO"
+    assert tissue == "UNKNOWN"
     assert abs(ln - math.log(10.0)) < 1e-9

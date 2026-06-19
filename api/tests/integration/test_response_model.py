@@ -19,14 +19,17 @@ from naturascreen.config import get_settings  # noqa: E402
 from naturascreen.models import Compound, Experiment  # noqa: E402
 from naturascreen.services.compounds.descriptors import FEATURE_KEYS  # noqa: E402
 from naturascreen.services.response import adapter, model  # noqa: E402
-from naturascreen.services.response.features import FEATURE_LENGTH  # noqa: E402
+from naturascreen.services.response.features import feature_length  # noqa: E402
 from naturascreen.services.subscores import AdapterUnavailable  # noqa: E402
+
+
+_TISSUE_VOCAB = ["lung", "skin"]
 
 
 def _toy_model_and_meta(seed: int = 0):
     """A tiny fitted regressor over the real feature dimensionality + a valid meta sidecar."""
     rng = np.random.default_rng(seed)
-    n_feat = FEATURE_LENGTH
+    n_feat = feature_length(_TISSUE_VOCAB)
     X = rng.normal(size=(24, n_feat))
     coef = rng.normal(size=n_feat)
     y = X @ coef + rng.normal(scale=0.01, size=24)  # learnable linear target
@@ -35,8 +38,9 @@ def _toy_model_and_meta(seed: int = 0):
     meta = model.ResponseMeta(
         feature_keys=list(FEATURE_KEYS),
         training_onbits=[[1, 2, 3], [4, 5, 6]],
-        cv_metric={"r2": 0.0, "rmse": 1.0, "folds": 5, "n": 24},
+        cv_metric={"random": {"r2": 0.0}, "leave_compounds_out": {"r2": 0.0}},
         source="test",
+        tissue_vocab=_TISSUE_VOCAB,
     )
     return reg, meta, X
 
@@ -128,7 +132,7 @@ async def test_adapter_predicts_persists_and_flags_ood(tmp_path, monkeypatch, se
             select(ResponsePrediction).where(ResponsePrediction.compound_id == compound.id)
         )
     ).scalar_one()
-    assert row.cell_line == "aggregate"
+    assert row.cell_line == "panel-median"
     assert row.nn_tanimoto == 0.0
     assert row.applicability_in_domain is False  # honestly flagged out-of-distribution
     assert row.predicted_ic50 > 0.0  # exp(ln IC50) is a positive µM concentration
