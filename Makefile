@@ -51,3 +51,6 @@ data-response: ## Train the response model on the public GDSC1 subset.
 
 curate-targets: ## Load curated cancer targets (with docking boxes) from the registry.
 	$(COMPOSE) run --rm api python -m naturascreen.services.docking.curate_targets
+
+retrain: ## Manually trigger response-model retraining on verified lab results.
+	$(COMPOSE) run --rm worker python -c "from naturascreen.tasks.retrain import retrain_response_model; print(retrain_response_model())"

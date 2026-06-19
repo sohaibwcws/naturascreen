@@ -1,0 +1,3 @@
+# Keeps the artifacts/ directory in version control. The trained response model
+# (response_model.ubj) and its meta sidecar (response_meta.json) are produced by
+# `make data-response` and are intentionally NOT committed (see .gitignore).

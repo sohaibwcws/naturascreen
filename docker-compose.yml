@@ -71,6 +71,20 @@ services:
       redis:
         condition: service_healthy
 
+  beat:
+    build:
+      context: ./api
+    command: celery -A naturascreen.tasks.celery_app beat --loglevel=INFO
+    environment:
+      POSTGRES_HOST: db
+      REDIS_URL: redis://redis:6379/0
+    env_file: .env
+    volumes:
+      - ./api:/app
+    depends_on:
+      redis:
+        condition: service_healthy
+
   web:
     build:
       context: ./web

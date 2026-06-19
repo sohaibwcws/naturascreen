@@ -60,10 +60,11 @@ def create_app() -> FastAPI:
 
 def _mount_routers(app: FastAPI) -> None:
     """Mount domain routers as each phase lands them (kept import-coherent)."""
-    from .routers import compounds, experiments, feedback, stream, targets
+    from .routers import compounds, experiments, feedback, neoantigens, stream, targets
 
     app.include_router(compounds.router)
     app.include_router(targets.router)
+    app.include_router(neoantigens.router)
     app.include_router(experiments.router)
     app.include_router(feedback.router)
     app.include_router(stream.router)

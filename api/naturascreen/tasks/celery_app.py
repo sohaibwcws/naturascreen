@@ -12,7 +12,7 @@ celery_app = Celery(
     "naturascreen",
     broker=settings.redis_url,
     backend=settings.redis_url,
-    include=["naturascreen.tasks.pipeline"],
+    include=["naturascreen.tasks.pipeline", "naturascreen.tasks.retrain"],
 )
 celery_app.conf.update(
     task_track_started=True,
@@ -20,4 +20,11 @@ celery_app.conf.update(
     result_serializer="json",
     accept_content=["json"],
     timezone="UTC",
+    # Feedback loop: retrain the response model on accumulated lab results weekly.
+    beat_schedule={
+        "retrain-response-weekly": {
+            "task": "retrain_response_model",
+            "schedule": 7 * 24 * 3600.0,
+        }
+    },
 )
