@@ -12,6 +12,15 @@ through a lab-result feedback loop.
 > the API, and every export; it cannot be turned off. If you or someone you love is facing
 > cancer, please work with qualified clinicians.
 
+## Demo — live tumor simulation
+
+![NaturaScreen simulation explorer: a real-time agent-based tumor view, population chart (treated vs untreated), and playback controls](docs/assets/simulator-demo.gif)
+
+*The simulation explorer streaming an agent-based tumor in real time — cells colored by state
+(dividing / stressed / dying), the treated-vs-untreated population curve, and the
+effectiveness slider. The simulation is an **illustration of the effectiveness score, not a
+prediction of tumor response** — that notice is on every frame.*
+
 ## Why I built this
 
 I'm **Sohaib Khan**. I was diagnosed with **oral squamous cell carcinoma** ("SSC"). Going
