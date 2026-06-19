@@ -30,3 +30,8 @@ api/naturascreen/services/docking/targets/*.pdbqt
 *.swp
 .idea/
 .vscode/
+
+# Local no-service run (SQLite)
+*.db
+*.db-journal
+*.db-wal

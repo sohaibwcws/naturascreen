@@ -40,8 +40,14 @@ class Settings(BaseSettings):
     # --- Storage ---
     data_dir: str = "/data"
 
+    # Full SQLAlchemy URL override (e.g. sqlite+aiosqlite:///./local.db for a no-service
+    # local run). When unset, the Postgres URL is composed from the parts above.
+    database_url_override: str | None = Field(default=None, alias="NATURASCREEN_DATABASE_URL")
+
     @property
     def database_url(self) -> str:
+        if self.database_url_override:
+            return self.database_url_override
         return (
             f"postgresql+asyncpg://{self.postgres_user}:{self.postgres_password}"
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
