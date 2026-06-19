@@ -53,6 +53,10 @@ services:
   worker:
     build:
       context: ./api
+      args:
+        # Scientific adapter extras baked into the worker. `docking,response` use reliable
+        # wheels; add `neoantigen` (MHCflurry + TensorFlow, heavier) via WORKER_EXTRAS.
+        INSTALL_EXTRAS: "${WORKER_EXTRAS:-docking,response}"
     command: celery -A naturascreen.tasks.celery_app worker --loglevel=INFO
     environment:
       POSTGRES_HOST: db

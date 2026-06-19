@@ -18,6 +18,11 @@ COPY pyproject.toml ./
 COPY naturascreen/__init__.py ./naturascreen/__init__.py
 RUN uv pip install --system --no-cache -e ".[test]"
 
+# Scientific adapter extras (worker only). e.g. INSTALL_EXTRAS="docking,neoantigen,response".
+# The `api` service leaves this empty and stays light; absence => `unavailable`, never faked.
+ARG INSTALL_EXTRAS=""
+RUN if [ -n "$INSTALL_EXTRAS" ]; then uv pip install --system --no-cache -e ".[$INSTALL_EXTRAS]"; fi
+
 # Source.
 COPY . .
 

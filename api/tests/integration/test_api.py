@@ -88,6 +88,26 @@ async def test_create_rejects_empty_compound_set(client):
     assert resp.status_code == 422
 
 
+async def test_feedback_lab_result_roundtrip(client):
+    cid = (await client.get("/compounds")).json()["items"][0]["id"]
+    created = await client.post(
+        "/feedback/lab-result",
+        json={"compound_id": cid, "measured_ic50": 12.5, "source": "internal assay", "verified": True},
+    )
+    assert created.status_code == 201
+    assert created.json()["measured_ic50"] == 12.5
+    listed = (await client.get("/feedback/lab-results?verified_only=true")).json()
+    assert any(r["compound_id"] == cid for r in listed)
+
+
+async def test_feedback_rejects_unknown_compound(client):
+    resp = await client.post(
+        "/feedback/lab-result",
+        json={"compound_id": 99999, "measured_ic50": 1.0, "source": "x"},
+    )
+    assert resp.status_code == 404
+
+
 def test_sandbox_websocket_streams_meta_then_frames():
     # Sync TestClient for websockets; the sandbox stream does not touch the database.
     with TestClient(app) as c:

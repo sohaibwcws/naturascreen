@@ -171,3 +171,24 @@ class CandidateReport(SafetyEnvelope):
     predicted_mechanism: str
     caveats: list[str] = Field(default_factory=list)
     references: list = Field(default_factory=list)
+
+
+# --- Feedback loop (real lab results -> retraining labels) ---
+
+
+class LabResultIn(BaseModel):
+    compound_id: int
+    target_id: int | None = None
+    measured_ic50: float = Field(gt=0, description="measured IC50 in micromolar")
+    source: str = Field(min_length=1, max_length=256)
+    verified: bool = False
+
+
+class LabResultOut(ORMModel):
+    id: int
+    compound_id: int
+    target_id: int | None
+    measured_ic50: float
+    source: str
+    verified: bool
+    created_at: datetime
