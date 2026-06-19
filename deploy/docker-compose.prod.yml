@@ -1,4 +1,4 @@
-# SSC Cancer — production stack with automatic HTTPS.
+# NaturaScreen — production stack with automatic HTTPS.
 #
 # Required env (e.g. in deploy/.env): APP_DOMAIN, API_DOMAIN, POSTGRES_PASSWORD,
 # NATURASCREEN_API_KEYS (comma-separated), and optionally WORKER_EXTRAS.

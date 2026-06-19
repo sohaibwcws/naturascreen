@@ -73,6 +73,38 @@ def _receptor_path(data_dir: str, pdb_id: str | None) -> Path | None:
     return Path(data_dir) / "docking" / "receptors" / f"{pdb_id}.pdbqt"
 
 
+def _parse_vina_affinity(pdbqt_text: str) -> float:
+    """Best-pose affinity (kcal/mol) from a Vina output PDBQT (first model is best)."""
+    for line in pdbqt_text.splitlines():
+        if line.startswith("REMARK VINA RESULT:"):
+            return float(line.split(":", 1)[1].split()[0])
+    raise ValueError("no 'REMARK VINA RESULT' line in Vina output")
+
+
+def _dock_cli(
+    receptor_path: str, ligand_pdbqt: str, center: list[float], size: list[float], seed: int
+) -> float:
+    """Run the AutoDock Vina CLI binary (cross-platform fallback when the wheel is absent)."""
+    import subprocess
+    import tempfile
+    from pathlib import Path as _P
+
+    binary = (get_settings().vina_binary or "vina").strip()
+    with tempfile.TemporaryDirectory() as td:
+        lig = _P(td) / "ligand.pdbqt"
+        out = _P(td) / "out.pdbqt"
+        lig.write_text(ligand_pdbqt)
+        cmd = [
+            binary, "--receptor", receptor_path, "--ligand", str(lig),
+            "--center_x", str(center[0]), "--center_y", str(center[1]), "--center_z", str(center[2]),
+            "--size_x", str(size[0]), "--size_y", str(size[1]), "--size_z", str(size[2]),
+            "--exhaustiveness", str(EXHAUSTIVENESS), "--seed", str(int(seed)),
+            "--out", str(out),
+        ]
+        subprocess.run(cmd, check=True, capture_output=True, text=True, timeout=900)
+        return _parse_vina_affinity(out.read_text())
+
+
 def _dock(
     receptor_path: str,
     smiles: str,
@@ -82,21 +114,22 @@ def _dock(
 ) -> float:
     """Prepare the ligand and run AutoDock Vina; return the best affinity (kcal/mol).
 
-    Runs synchronously (the Vina C++ core is blocking) and is invoked in a worker
-    thread by :func:`score`. All heavy imports are local so this module stays
-    dependency-light at import time.
+    Uses the Python ``vina`` bindings when installed (the Linux worker image); otherwise
+    falls back to the Vina CLI binary on PATH, so docking also runs on hosts without the
+    wheel. Runs synchronously (the Vina C++ core blocks) and is invoked in a worker thread
+    by :func:`score`. All heavy imports are local so the module stays dependency-light.
     """
-    from vina import Vina
-
     ligand_pdbqt = prepare_ligand(smiles, seed=seed)
+    try:
+        from vina import Vina
+    except ImportError:
+        return _dock_cli(receptor_path, ligand_pdbqt, center, size, seed)
 
     v = Vina(sf_name="vina", seed=int(seed), verbosity=0)
     v.set_receptor(receptor_path)
     v.set_ligand_from_string(ligand_pdbqt)
     v.compute_vina_maps(center=center, box_size=size)
     v.dock(exhaustiveness=EXHAUSTIVENESS, n_poses=N_POSES)
-
-    # energies(): rows are poses ranked best-first; column 0 is the total affinity.
     energies = v.energies(n_poses=1)
     return float(energies[0][0])
 

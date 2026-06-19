@@ -2,11 +2,24 @@
 
 from __future__ import annotations
 
+import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from naturascreen import models  # noqa: F401  (register all tables on Base.metadata)
+from naturascreen.config import get_settings
 from naturascreen.db import Base
+
+
+@pytest.fixture(autouse=True)
+def _clean_adapter_env(monkeypatch):
+    """Force adapters OFF by default so the suite is deterministic regardless of the host's
+    ambient provisioning (env vars / trained model files). Tests that exercise a provisioned
+    adapter override these within their own body."""
+    settings = get_settings()
+    monkeypatch.setattr(settings, "response_model_ready", False)
+    monkeypatch.setattr(settings, "mhcflurry_ready", False)
+    monkeypatch.setattr(settings, "vina_binary", "")
 
 
 @pytest_asyncio.fixture

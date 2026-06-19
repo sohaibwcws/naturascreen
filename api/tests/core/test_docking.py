@@ -18,7 +18,7 @@ import pytest
 pytest.importorskip("sqlalchemy")
 
 from naturascreen.models import Compound, Experiment, Target  # noqa: E402
-from naturascreen.services.docking.adapter import _resolve_box, score  # noqa: E402
+from naturascreen.services.docking.adapter import _parse_vina_affinity, _resolve_box, score  # noqa: E402
 from naturascreen.services.docking.targets_registry import TARGETS  # noqa: E402
 from naturascreen.services.subscores import AdapterUnavailable  # noqa: E402
 
@@ -116,3 +116,15 @@ def test_registry_has_curated_dockable_targets():
         assert entry["box_source"].strip(), "provenance citation required"
         seen_pdb.add(entry["pdb_id"])
     assert len(seen_pdb) == len(TARGETS), "PDB ids must be unique"
+
+
+def test_parse_vina_affinity_takes_best_pose():
+    out = (
+        "MODEL 1\n"
+        "REMARK VINA RESULT:    -11.4      0.000      0.000\n"
+        "ENDMDL\n"
+        "MODEL 2\n"
+        "REMARK VINA RESULT:    -9.2       1.234      2.345\n"
+        "ENDMDL\n"
+    )
+    assert _parse_vina_affinity(out) == -11.4

@@ -20,7 +20,7 @@ export default function DashboardPage() {
   return (
     <div className="mx-auto max-w-5xl space-y-10">
       <section className="space-y-4 pt-2">
-        <span className="chip">Open-source · research hypotheses only</span>
+        <span className="chip">NaturaScreen · open-source · research hypotheses only</span>
         <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
           Screen natural compounds against cancer,{" "}
           <span className="text-accent">honestly.</span>
@@ -31,12 +31,22 @@ export default function DashboardPage() {
           simulated tumor in real time — then ranks candidates as hypotheses for the lab. It
           does not produce cures, and it says so everywhere.
         </p>
+        <p className="max-w-2xl text-sm leading-relaxed text-ink-muted">
+          Built by Sohaib Khan after an oral squamous cell carcinoma diagnosis — a tool to
+          help researchers fight cancer with open simulation and compound screening.{" "}
+          <Link href="/about" className="text-accent hover:underline">
+            Read the story →
+          </Link>
+        </p>
         <div className="flex flex-wrap gap-3 pt-1">
           <Link href="/experiments" className="btn btn-primary">
             Build an experiment
           </Link>
-          <Link href="/compounds" className="btn">
-            Browse compounds
+          <Link href="/simulate" className="btn">
+            Live simulator
+          </Link>
+          <Link href="/about" className="btn">
+            About &amp; support
           </Link>
         </div>
       </section>

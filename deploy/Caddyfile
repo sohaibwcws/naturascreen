@@ -1,4 +1,4 @@
-# SSC Cancer — automatic HTTPS via Caddy (Let's Encrypt).
+# NaturaScreen — automatic HTTPS via Caddy (Let's Encrypt).
 # Set APP_DOMAIN and API_DOMAIN in the environment. Caddy provisions + renews TLS certs.
 # Two subdomains: the app (Next.js) and the API (FastAPI, incl. the WebSocket stream).
 

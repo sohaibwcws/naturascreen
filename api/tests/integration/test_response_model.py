@@ -19,13 +19,14 @@ from naturascreen.config import get_settings  # noqa: E402
 from naturascreen.models import Compound, Experiment  # noqa: E402
 from naturascreen.services.compounds.descriptors import FEATURE_KEYS  # noqa: E402
 from naturascreen.services.response import adapter, model  # noqa: E402
+from naturascreen.services.response.features import FEATURE_LENGTH  # noqa: E402
 from naturascreen.services.subscores import AdapterUnavailable  # noqa: E402
 
 
 def _toy_model_and_meta(seed: int = 0):
     """A tiny fitted regressor over the real feature dimensionality + a valid meta sidecar."""
     rng = np.random.default_rng(seed)
-    n_feat = len(FEATURE_KEYS)
+    n_feat = FEATURE_LENGTH
     X = rng.normal(size=(24, n_feat))
     coef = rng.normal(size=n_feat)
     y = X @ coef + rng.normal(scale=0.01, size=24)  # learnable linear target

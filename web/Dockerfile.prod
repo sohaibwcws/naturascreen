@@ -1,4 +1,4 @@
-# SSC Cancer web — production image (Next.js standalone).
+# NaturaScreen web — production image (Next.js standalone).
 # NEXT_PUBLIC_* are baked at build time, so the API/WS base URLs are passed as build args.
 FROM node:22-alpine AS builder
 WORKDIR /app

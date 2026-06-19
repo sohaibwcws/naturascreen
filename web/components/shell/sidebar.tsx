@@ -11,6 +11,7 @@ const NAV: { href: string; label: string; icon: React.ReactNode }[] = [
   { href: "/neoantigens", label: "Neoantigens", icon: <IconShield /> },
   { href: "/experiments", label: "Experiments", icon: <IconBeaker /> },
   { href: "/simulate", label: "Simulator", icon: <IconPulse /> },
+  { href: "/about", label: "About", icon: <IconInfo /> },
 ];
 
 export function Sidebar() {
@@ -128,4 +129,14 @@ function IconHelix() {
 
 function IconPulse() {
   return svg(<path d="M3 12h4l2-6 4 12 2-6h6" />);
+}
+
+function IconInfo() {
+  return svg(
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <line x1="12" y1="11" x2="12" y2="16" />
+      <line x1="12" y1="8" x2="12.01" y2="8" />
+    </>,
+  );
 }
