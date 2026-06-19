@@ -1,0 +1,14 @@
+# SSC Cancer — automatic HTTPS via Caddy (Let's Encrypt).
+# Set APP_DOMAIN and API_DOMAIN in the environment. Caddy provisions + renews TLS certs.
+# Two subdomains: the app (Next.js) and the API (FastAPI, incl. the WebSocket stream).
+
+{$APP_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy web:3000
+}
+
+{$API_DOMAIN} {
+	encode zstd gzip
+	# WebSocket upgrades are proxied transparently by Caddy.
+	reverse_proxy api:8000
+}

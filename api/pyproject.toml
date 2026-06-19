@@ -18,6 +18,7 @@ dependencies = [
     "rdkit>=2024.3.1",
     "reportlab>=4.2",
     "python-multipart>=0.0.9",
+    "slowapi>=0.1.9",
 ]
 
 [project.optional-dependencies]

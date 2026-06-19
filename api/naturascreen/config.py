@@ -13,7 +13,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="", case_sensitive=False, extra="ignore")
+    model_config = SettingsConfigDict(
+        env_prefix="", case_sensitive=False, extra="ignore", populate_by_name=True
+    )
 
     # --- Postgres ---
     postgres_user: str = "naturascreen"
@@ -28,6 +30,15 @@ class Settings(BaseSettings):
     # --- API ---
     cors_origins: str = Field(default="http://localhost:3000", alias="NATURASCREEN_CORS_ORIGINS")
     log_level: str = Field(default="INFO", alias="NATURASCREEN_LOG_LEVEL")
+
+    # --- Security ---
+    # Comma-separated API keys. When empty, the API runs in OPEN mode (local/dev) and write
+    # endpoints are unguarded. Set keys in any public deployment to gate writes/compute.
+    api_keys: str = Field(default="", alias="NATURASCREEN_API_KEYS")
+    # Rate limit for expensive endpoints (slowapi syntax), e.g. "30/minute".
+    rate_limit: str = Field(default="120/minute", alias="NATURASCREEN_RATE_LIMIT")
+    # slowapi storage backend; defaults to in-process memory. Use the Redis URL in prod.
+    rate_limit_storage: str = Field(default="memory://", alias="NATURASCREEN_RATE_LIMIT_STORAGE")
 
     # --- COCONUT ingestion ---
     coconut_api_base: str = "https://coconut.naturalproducts.net/api"
@@ -56,6 +67,10 @@ class Settings(BaseSettings):
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    @property
+    def api_key_list(self) -> list[str]:
+        return [k.strip() for k in self.api_keys.split(",") if k.strip()]
 
 
 @lru_cache

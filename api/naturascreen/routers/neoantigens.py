@@ -18,6 +18,7 @@ from ..db import get_session
 from ..models import Neoantigen
 from ..services.neoantigen.service import STRONG_RANK, WEAK_RANK, binder_class, predict
 from ..services.subscores import AdapterUnavailable
+from ..security import require_api_key
 
 router = APIRouter(prefix="/neoantigens", tags=["neoantigens"])
 
@@ -85,7 +86,7 @@ class PredictResponse(BaseModel):
     predictions: list[PredictionOut]
 
 
-@router.post("/predict", response_model=PredictResponse)
+@router.post("/predict", response_model=PredictResponse, dependencies=[Depends(require_api_key)])
 async def predict_neoantigens(
     body: PredictRequest, session: AsyncSession = Depends(get_session)
 ) -> PredictResponse:

@@ -14,11 +14,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..db import get_session
 from ..models import Compound, LabResult
 from ..schemas import LabResultIn, LabResultOut
+from ..security import require_api_key
 
 router = APIRouter(prefix="/feedback", tags=["feedback"])
 
 
-@router.post("/lab-result", response_model=LabResultOut, status_code=201)
+@router.post("/lab-result", response_model=LabResultOut, status_code=201, dependencies=[Depends(require_api_key)])
 async def submit_lab_result(
     body: LabResultIn, session: AsyncSession = Depends(get_session)
 ) -> LabResultOut:

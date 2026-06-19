@@ -1,0 +1,116 @@
+# SSC Cancer — production stack with automatic HTTPS.
+#
+# Required env (e.g. in deploy/.env): APP_DOMAIN, API_DOMAIN, POSTGRES_PASSWORD,
+# NATURASCREEN_API_KEYS (comma-separated), and optionally WORKER_EXTRAS.
+# Bring up:  docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env up -d --build
+#
+# Caddy terminates TLS for both subdomains; the API keys gate write/compute endpoints;
+# rate limiting is Redis-backed and shared across API replicas.
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-naturascreen}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-naturascreen}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-naturascreen}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ../api
+    command: >-
+      sh -c "alembic upgrade head &&
+             uvicorn naturascreen.main:app --host 0.0.0.0 --port 8000 --workers 4"
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      REDIS_URL: redis://redis:6379/0
+      NATURASCREEN_API_KEYS: ${NATURASCREEN_API_KEYS:?set NATURASCREEN_API_KEYS}
+      NATURASCREEN_CORS_ORIGINS: https://${APP_DOMAIN}
+      NATURASCREEN_RATE_LIMIT_STORAGE: redis://redis:6379/1
+      MHCFLURRY_READY: ${MHCFLURRY_READY:-0}
+      RESPONSE_MODEL_READY: ${RESPONSE_MODEL_READY:-0}
+    volumes:
+      - simdata:/data
+    depends_on:
+      db: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: ../api
+      args:
+        INSTALL_EXTRAS: ${WORKER_EXTRAS:-docking,response}
+    command: celery -A naturascreen.tasks.celery_app worker --loglevel=INFO
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      REDIS_URL: redis://redis:6379/0
+      MHCFLURRY_READY: ${MHCFLURRY_READY:-0}
+      RESPONSE_MODEL_READY: ${RESPONSE_MODEL_READY:-0}
+    volumes:
+      - simdata:/data
+    depends_on:
+      db: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    restart: unless-stopped
+
+  beat:
+    build:
+      context: ../api
+    command: celery -A naturascreen.tasks.celery_app beat --loglevel=INFO
+    environment:
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      redis: { condition: service_healthy }
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ../web
+      dockerfile: Dockerfile.prod
+      args:
+        NEXT_PUBLIC_API_BASE: https://${API_DOMAIN}
+        NEXT_PUBLIC_WS_BASE: wss://${API_DOMAIN}
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:?set APP_DOMAIN}
+      API_DOMAIN: ${API_DOMAIN:?set API_DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+      - caddyconfig:/config
+    depends_on:
+      - web
+      - api
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  simdata:
+  caddydata:
+  caddyconfig:

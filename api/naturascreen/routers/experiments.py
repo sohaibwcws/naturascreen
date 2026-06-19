@@ -24,11 +24,12 @@ from ..schemas import (
 )
 from ..services.pipeline import run_pipeline
 from ..services.report.report import build_report, render_pdf
+from ..security import require_api_key
 
 router = APIRouter(prefix="/experiments", tags=["experiments"])
 
 
-@router.post("", response_model=ExperimentOut, status_code=201)
+@router.post("", response_model=ExperimentOut, status_code=201, dependencies=[Depends(require_api_key)])
 async def create_experiment(
     body: ExperimentCreate, session: AsyncSession = Depends(get_session)
 ) -> ExperimentOut:
@@ -67,7 +68,7 @@ async def get_experiment(
     return ExperimentOut.model_validate(experiment)
 
 
-@router.post("/{experiment_id}/run", response_model=ExperimentOut)
+@router.post("/{experiment_id}/run", response_model=ExperimentOut, dependencies=[Depends(require_api_key)])
 async def run_experiment_endpoint(
     experiment_id: int,
     sync: bool = Query(default=False, description="run inline instead of queueing on Celery"),

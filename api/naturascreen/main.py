@@ -12,6 +12,10 @@ import logging
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
+from slowapi.util import get_remote_address
 
 from . import __version__
 from .config import get_settings
@@ -35,6 +39,16 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # Rate limiting (per client IP). Default storage is in-process; use Redis in prod.
+    limiter = Limiter(
+        key_func=get_remote_address,
+        default_limits=[settings.rate_limit],
+        storage_uri=settings.rate_limit_storage,
+    )
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+    app.add_middleware(SlowAPIMiddleware)
 
     @app.get("/health", tags=["meta"])
     async def health() -> dict:
