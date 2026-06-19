@@ -10,6 +10,7 @@ const NAV: { href: string; label: string; icon: React.ReactNode }[] = [
   { href: "/targets", label: "Targets", icon: <IconTarget /> },
   { href: "/neoantigens", label: "Neoantigens", icon: <IconShield /> },
   { href: "/experiments", label: "Experiments", icon: <IconBeaker /> },
+  { href: "/simulate", label: "Simulator", icon: <IconPulse /> },
 ];
 
 export function Sidebar() {
@@ -123,4 +124,8 @@ function IconHelix() {
       <path d="M7 3c0 4 10 6 10 9s-10 5-10 9M17 3c0 4-10 6-10 9s10 5 10 9" strokeLinecap="round" />
     </svg>
   );
+}
+
+function IconPulse() {
+  return svg(<path d="M3 12h4l2-6 4 12 2-6h6" />);
 }
