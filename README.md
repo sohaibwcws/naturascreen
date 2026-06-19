@@ -124,11 +124,51 @@ NaturaScreen is free and open. The best way to help fight cancer with it:
 - ⚙ **Contribute** — better models, curated targets, datasets, validated lab results.
 - 🔬 **Bring real data** — submit lab results so the model learns what holds up in the dish.
 
-## Tech stack & data
+## Acknowledgements — built on open source
 
-FastAPI · SQLAlchemy 2 (async) · Celery + Redis · RDKit · AutoDock Vina + Meeko · MHCflurry ·
-XGBoost · Next.js 15 · react-three-fiber · D3 · Tailwind. Data: COCONUT 2.0 (CC0), GDSC1
-(cancerrxgene.org), RCSB PDB. Docking pocket boxes are hand-curated with literature citations.
+NaturaScreen exists only because of the open-source and open-data communities. Every tool
+and dataset below is used in this project, and all credit for the underlying science and
+engineering belongs to their authors and maintainers. Thank you.
+
+### Scientific tools & open data
+| Project | Role | License |
+|---|---|---|
+| [COCONUT 2.0](https://coconut.naturalproducts.net/) | Open natural-products database (the compound library) | CC0 |
+| [GDSC](https://www.cancerrxgene.org/) (Genomics of Drug Sensitivity in Cancer) | Drug–cell-line IC50 training data for the response model | Academic use |
+| [PubChem](https://pubchem.ncbi.nlm.nih.gov/) (NIH/NCBI) | Resolving drug names → canonical SMILES | Public domain |
+| [RCSB PDB](https://www.rcsb.org/) | Cancer-target structures for docking | Open |
+| [RDKit](https://www.rdkit.org/) | Cheminformatics: SMILES, descriptors, ECFP4, depiction | BSD-3 |
+| [AutoDock Vina](https://vina.scripps.edu/) | Molecular docking engine | Apache-2.0 |
+| [Meeko](https://github.com/forlilab/Meeko) | Ligand/receptor preparation for Vina | LGPL-2.1 |
+| [MHCflurry](https://github.com/openvax/mhcflurry) (OpenVax) | Peptide–MHC presentation prediction | Apache-2.0 |
+| [TensorFlow](https://www.tensorflow.org/) / [Keras](https://keras.io/) | MHCflurry's neural backend | Apache-2.0 |
+| [XGBoost](https://xgboost.ai/) | Gradient-boosted response model | Apache-2.0 |
+| [scikit-learn](https://scikit-learn.org/) | Cross-validation + metrics | BSD-3 |
+| [pandas](https://pandas.pydata.org/) · [NumPy](https://numpy.org/) · [openpyxl](https://openpyxl.readthedocs.io/) | Data wrangling, the agent simulation, GDSC parsing | BSD / MIT |
+
+### Backend
+[FastAPI](https://fastapi.tiangolo.com/) · [Starlette](https://www.starlette.io/) ·
+[Uvicorn](https://www.uvicorn.org/) · [Pydantic](https://docs.pydantic.dev/) ·
+[SQLAlchemy](https://www.sqlalchemy.org/) · [asyncpg](https://github.com/MagicStack/asyncpg) ·
+[Alembic](https://alembic.sqlalchemy.org/) · [Celery](https://docs.celeryq.dev/) ·
+[redis-py](https://github.com/redis/redis-py) · [httpx](https://www.python-httpx.org/) ·
+[ReportLab](https://www.reportlab.com/) (PDF) · [slowapi](https://github.com/laurents/slowapi) ·
+[pytest](https://pytest.org/) · [uv](https://github.com/astral-sh/uv).
+
+### Frontend
+[Next.js](https://nextjs.org/) · [React](https://react.dev/) · [Three.js](https://threejs.org/) ·
+[react-three-fiber](https://github.com/pmndrs/react-three-fiber) +
+[drei](https://github.com/pmndrs/drei) · [D3](https://d3js.org/) ·
+[Tailwind CSS](https://tailwindcss.com/) · [Zustand](https://github.com/pmndrs/zustand) ·
+[TypeScript](https://www.typescriptlang.org/).
+
+### Infrastructure & dev
+[PostgreSQL](https://www.postgresql.org/) · [Redis](https://redis.io/) ·
+[Docker](https://www.docker.com/) + Compose · [Caddy](https://caddyserver.com/) (auto-HTTPS) ·
+[Node.js](https://nodejs.org/) · [colima](https://github.com/abiosoft/colima) (local Docker on macOS).
+
+*Licenses belong to their respective projects; consult each for exact terms. If anything here
+is miscredited, please open an issue — correct attribution matters.*
 
 ---
 
