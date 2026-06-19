@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.env
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+htmlcov/
+.coverage
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+.turbo/
+
+# Data & model artifacts (fetched via `make data`, never committed)
+data/
+!data/.gitkeep
+api/naturascreen/services/response/artifacts/*.json
+api/naturascreen/services/response/artifacts/*.ubj
+!api/naturascreen/services/response/artifacts/.gitkeep
+api/naturascreen/services/docking/targets/*.pdbqt
+
+# OS / editor
+.DS_Store
+*.swp
+.idea/
+.vscode/

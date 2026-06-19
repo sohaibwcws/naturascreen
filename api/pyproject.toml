@@ -1,0 +1,49 @@
+[project]
+name = "naturascreen"
+version = "0.1.0"
+description = "Screen natural compounds against cancer targets and rank them as research hypotheses."
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "sqlalchemy[asyncio]>=2.0.30",
+    "asyncpg>=0.29",
+    "alembic>=1.13",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+    "celery[redis]>=5.4",
+    "redis>=5.0",
+    "httpx>=0.27",
+    "numpy>=1.26",
+    "rdkit>=2024.3.1",
+    "reportlab>=4.2",
+    "python-multipart>=0.0.9",
+]
+
+[project.optional-dependencies]
+# Real scientific adapters. Installed into the worker image; absence => `unavailable`.
+docking = ["vina>=1.2.5", "meeko>=0.5"]
+neoantigen = ["mhcflurry>=2.1", "tensorflow>=2.16"]
+response = ["xgboost>=2.0", "scikit-learn>=1.4", "pandas>=2.2"]
+test = ["pytest>=8.0", "pytest-asyncio>=0.23", "respx>=0.21"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["naturascreen"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["B008"]  # FastAPI Depends() in defaults is idiomatic
