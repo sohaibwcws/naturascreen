@@ -13,6 +13,7 @@ through a lab-result feedback loop.
 > cancer, please work with qualified clinicians.
 
 ## Demo — live tumor simulation
+https://naturascreen.sohaib.com
 
 ![NaturaScreen simulation explorer: a real-time agent-based tumor view, population chart (treated vs untreated), and playback controls](docs/assets/simulator-demo.gif)
 
