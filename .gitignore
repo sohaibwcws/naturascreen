@@ -35,3 +35,6 @@ api/naturascreen/services/docking/targets/*.pdbqt
 *.db
 *.db-journal
 *.db-wal
+
+# local premortem gate marker
+.claude/

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import FastAPI
+from fastapi import APIRouter, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -50,11 +50,16 @@ def create_app() -> FastAPI:
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
     app.add_middleware(SlowAPIMiddleware)
 
-    @app.get("/health", tags=["meta"])
+    # All endpoints are served under /api so a single domain can route path-prefix
+    # /api/* to this service and everything else to the Next.js frontend (whose page
+    # routes collide with the domain routers: /compounds, /experiments, etc.).
+    api = APIRouter(prefix="/api")
+
+    @api.get("/health", tags=["meta"])
     async def health() -> dict:
         return {"status": "ok", "version": __version__}
 
-    @app.get("/meta", tags=["meta"])
+    @api.get("/meta", tags=["meta"])
     async def meta() -> dict:
         """Honest capability report: what is actually provisioned vs. `unavailable`."""
         import json
@@ -92,19 +97,20 @@ def create_app() -> FastAPI:
             },
         }
 
-    _mount_routers(app)
+    _mount_routers(api)
+    app.include_router(api)
     return app
 
 
-def _mount_routers(app: FastAPI) -> None:
-    """Mount domain routers as each phase lands them (kept import-coherent)."""
+def _mount_routers(api: APIRouter) -> None:
+    """Mount domain routers under the /api parent as each phase lands them."""
     from .routers import compounds, experiments, feedback, neoantigens, stream, targets
 
-    app.include_router(compounds.router)
-    app.include_router(targets.router)
-    app.include_router(neoantigens.router)
-    app.include_router(experiments.router)
-    app.include_router(feedback.router)
-    app.include_router(stream.router)
+    api.include_router(compounds.router)
+    api.include_router(targets.router)
+    api.include_router(neoantigens.router)
+    api.include_router(experiments.router)
+    api.include_router(feedback.router)
+    api.include_router(stream.router)
 
 app = create_app()

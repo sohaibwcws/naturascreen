@@ -51,29 +51,29 @@ async def client():
 
 
 async def test_health_and_meta(client):
-    assert (await client.get("/health")).json()["status"] == "ok"
-    meta = (await client.get("/meta")).json()
+    assert (await client.get("/api/health")).json()["status"] == "ok"
+    meta = (await client.get("/api/meta")).json()
     assert meta["disclaimer"] == DISCLAIMER
     assert meta["simulation_notice"] == SIMULATION_NOTICE
     assert set(meta["adapters"]) == {"docking", "neoantigen", "response"}
 
 
 async def test_compounds_listed(client):
-    body = (await client.get("/compounds")).json()
+    body = (await client.get("/api/compounds")).json()
     assert body["total"] == 2
     assert {c["name"] for c in body["items"]} == {"Alpha", "Beta"}
 
 
 async def test_experiment_flow_end_to_end(client):
-    ids = [c["id"] for c in (await client.get("/compounds")).json()["items"]]
-    created = await client.post("/experiments", json={"compound_set": ids, "seed": 1})
+    ids = [c["id"] for c in (await client.get("/api/compounds")).json()["items"]]
+    created = await client.post("/api/experiments", json={"compound_set": ids, "seed": 1})
     assert created.status_code == 201
     exp_id = created.json()["id"]
 
-    run = await client.post(f"/experiments/{exp_id}/run?sync=true")
+    run = await client.post(f"/api/experiments/{exp_id}/run?sync=true")
     assert run.json()["status"] == "completed"
 
-    results = (await client.get(f"/experiments/{exp_id}/results")).json()
+    results = (await client.get(f"/api/experiments/{exp_id}/results")).json()
     # Safety notices are present on the results envelope (type-enforced).
     assert results["disclaimer"] == DISCLAIMER
     assert results["illustrative_notice"] == SIMULATION_NOTICE
@@ -84,25 +84,25 @@ async def test_experiment_flow_end_to_end(client):
 
 
 async def test_create_rejects_empty_compound_set(client):
-    resp = await client.post("/experiments", json={"compound_set": []})
+    resp = await client.post("/api/experiments", json={"compound_set": []})
     assert resp.status_code == 422
 
 
 async def test_feedback_lab_result_roundtrip(client):
-    cid = (await client.get("/compounds")).json()["items"][0]["id"]
+    cid = (await client.get("/api/compounds")).json()["items"][0]["id"]
     created = await client.post(
-        "/feedback/lab-result",
+        "/api/feedback/lab-result",
         json={"compound_id": cid, "measured_ic50": 12.5, "source": "internal assay", "verified": True},
     )
     assert created.status_code == 201
     assert created.json()["measured_ic50"] == 12.5
-    listed = (await client.get("/feedback/lab-results?verified_only=true")).json()
+    listed = (await client.get("/api/feedback/lab-results?verified_only=true")).json()
     assert any(r["compound_id"] == cid for r in listed)
 
 
 async def test_feedback_rejects_unknown_compound(client):
     resp = await client.post(
-        "/feedback/lab-result",
+        "/api/feedback/lab-result",
         json={"compound_id": 99999, "measured_ic50": 1.0, "source": "x"},
     )
     assert resp.status_code == 404
@@ -112,7 +112,7 @@ def test_sandbox_websocket_streams_meta_then_frames():
     # Sync TestClient for websockets; the sandbox stream does not touch the database.
     with TestClient(app) as c:
         with c.websocket_connect(
-            "/simulate/stream?effectiveness=0.9&population=40&steps=12&fps=30"
+            "/api/simulate/stream?effectiveness=0.9&population=40&steps=12&fps=30"
         ) as ws:
             meta = ws.receive_json()
             assert meta["type"] == "meta"

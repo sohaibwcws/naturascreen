@@ -1,0 +1,134 @@
+# NaturaScreen — Dokploy deployment (single domain, Dokploy's Traefik terminates TLS).
+#
+# One public domain (APP_DOMAIN) serves both surfaces:
+#   /api/*  -> FastAPI  (all backend routes are mounted under /api; websockets at
+#              /api/simulate/stream and /api/experiments/{id}/stream)
+#   /*      -> Next.js frontend
+#
+# The frontend's NEXT_PUBLIC_API_BASE / NEXT_PUBLIC_WS_BASE are baked at build time to
+# https://${APP_DOMAIN}/api and wss://${APP_DOMAIN}/api, so no Caddy/second subdomain.
+#
+# Required env (Dokploy env editor):
+#   APP_DOMAIN=naturascreen.sohaib.com
+#   POSTGRES_PASSWORD=<strong>
+#   NATURASCREEN_API_KEYS=<comma-separated>
+# Optional: WORKER_EXTRAS, MHCFLURRY_READY, RESPONSE_MODEL_READY
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: "${POSTGRES_USER:-naturascreen}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}"
+      POSTGRES_DB: "${POSTGRES_DB:-naturascreen}"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-naturascreen}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ../api
+    command: >-
+      sh -c "alembic upgrade head &&
+             uvicorn naturascreen.main:app --host 0.0.0.0 --port 8000 --workers 4"
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
+      REDIS_URL: redis://redis:6379/0
+      NATURASCREEN_API_KEYS: "${NATURASCREEN_API_KEYS:?set NATURASCREEN_API_KEYS}"
+      NATURASCREEN_CORS_ORIGINS: "https://${APP_DOMAIN}"
+      NATURASCREEN_RATE_LIMIT_STORAGE: redis://redis:6379/1
+      MHCFLURRY_READY: "${MHCFLURRY_READY:-0}"
+      RESPONSE_MODEL_READY: "${RESPONSE_MODEL_READY:-0}"
+    volumes:
+      - simdata:/data
+    depends_on:
+      db: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    restart: unless-stopped
+    networks:
+      - default
+      - dokploy-network
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=dokploy-network
+      # /api/* (incl. websockets) -> this service. Priority above the web catch-all.
+      - traefik.http.routers.naturascreen-api.rule=Host(`${APP_DOMAIN}`) && PathPrefix(`/api`)
+      - traefik.http.routers.naturascreen-api.priority=100
+      - traefik.http.routers.naturascreen-api.entrypoints=websecure
+      - traefik.http.routers.naturascreen-api.tls=true
+      - traefik.http.routers.naturascreen-api.tls.certresolver=letsencrypt
+      - traefik.http.services.naturascreen-api.loadbalancer.server.port=8000
+
+  worker:
+    build:
+      context: ../api
+      args:
+        INSTALL_EXTRAS: "${WORKER_EXTRAS:-docking,response}"
+    command: celery -A naturascreen.tasks.celery_app worker --loglevel=INFO
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
+      REDIS_URL: redis://redis:6379/0
+      MHCFLURRY_READY: "${MHCFLURRY_READY:-0}"
+      RESPONSE_MODEL_READY: "${RESPONSE_MODEL_READY:-0}"
+    volumes:
+      - simdata:/data
+    depends_on:
+      db: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    restart: unless-stopped
+
+  beat:
+    build:
+      context: ../api
+    command: celery -A naturascreen.tasks.celery_app beat --loglevel=INFO
+    environment:
+      REDIS_URL: redis://redis:6379/0
+    depends_on:
+      redis: { condition: service_healthy }
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ../web
+      dockerfile: Dockerfile.prod
+      args:
+        NEXT_PUBLIC_API_BASE: "https://${APP_DOMAIN}/api"
+        NEXT_PUBLIC_WS_BASE: "wss://${APP_DOMAIN}/api"
+    restart: unless-stopped
+    networks:
+      - default
+      - dokploy-network
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=dokploy-network
+      # Catch-all for the domain (lower priority than the /api router above).
+      - traefik.http.routers.naturascreen-web.rule=Host(`${APP_DOMAIN}`)
+      - traefik.http.routers.naturascreen-web.priority=1
+      - traefik.http.routers.naturascreen-web.entrypoints=websecure
+      - traefik.http.routers.naturascreen-web.tls=true
+      - traefik.http.routers.naturascreen-web.tls.certresolver=letsencrypt
+      - traefik.http.services.naturascreen-web.loadbalancer.server.port=3000
+
+volumes:
+  pgdata:
+  simdata:
+
+networks:
+  dokploy-network:
+    external: true
