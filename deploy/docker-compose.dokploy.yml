@@ -29,6 +29,11 @@ services:
       timeout: 5s
       retries: 10
     restart: unless-stopped
+    # Unique alias: dokploy-network is shared and already carries a bare `db` alias from
+    # another stack, so consumers target this project-scoped name to avoid cross-stack DNS.
+    networks:
+      default:
+        aliases: [naturascreen-db]
 
   redis:
     image: redis:7-alpine
@@ -38,6 +43,9 @@ services:
       timeout: 5s
       retries: 10
     restart: unless-stopped
+    networks:
+      default:
+        aliases: [naturascreen-redis]
 
   api:
     build:
@@ -46,12 +54,12 @@ services:
       sh -c "alembic upgrade head &&
              uvicorn naturascreen.main:app --host 0.0.0.0 --port 8000 --workers 4"
     environment:
-      POSTGRES_HOST: db
+      POSTGRES_HOST: naturascreen-db
       POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
-      REDIS_URL: redis://redis:6379/0
+      REDIS_URL: redis://naturascreen-redis:6379/0
       NATURASCREEN_API_KEYS: "${NATURASCREEN_API_KEYS:?set NATURASCREEN_API_KEYS}"
       NATURASCREEN_CORS_ORIGINS: "https://${APP_DOMAIN}"
-      NATURASCREEN_RATE_LIMIT_STORAGE: redis://redis:6379/1
+      NATURASCREEN_RATE_LIMIT_STORAGE: redis://naturascreen-redis:6379/1
       MHCFLURRY_READY: "${MHCFLURRY_READY:-0}"
       RESPONSE_MODEL_READY: "${RESPONSE_MODEL_READY:-0}"
     volumes:
@@ -81,9 +89,9 @@ services:
         INSTALL_EXTRAS: "${WORKER_EXTRAS:-docking,response}"
     command: celery -A naturascreen.tasks.celery_app worker --loglevel=INFO
     environment:
-      POSTGRES_HOST: db
+      POSTGRES_HOST: naturascreen-db
       POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
-      REDIS_URL: redis://redis:6379/0
+      REDIS_URL: redis://naturascreen-redis:6379/0
       MHCFLURRY_READY: "${MHCFLURRY_READY:-0}"
       RESPONSE_MODEL_READY: "${RESPONSE_MODEL_READY:-0}"
     volumes:
@@ -98,7 +106,7 @@ services:
       context: ../api
     command: celery -A naturascreen.tasks.celery_app beat --loglevel=INFO
     environment:
-      REDIS_URL: redis://redis:6379/0
+      REDIS_URL: redis://naturascreen-redis:6379/0
     depends_on:
       redis: { condition: service_healthy }
     restart: unless-stopped
